@@ -122,7 +122,7 @@ export default function StudentDetail() {
                 <TrendingUp className="w-5 h-5 text-[#2dd4bf]" />
                 各科成绩历史趋势
               </h3>
-              <ScoreChart />
+              <ScoreChart studentId={student.id} />
             </div>
           </div>
 

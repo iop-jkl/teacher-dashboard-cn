@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -10,6 +10,7 @@ import {
   Legend,
 } from 'recharts';
 import { examTrendData, SUBJECTS } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 
 const COLORS: Record<string, string> = {
@@ -21,8 +22,25 @@ const COLORS: Record<string, string> = {
   生物: '#10b981',
 };
 
-export default function ScoreChart() {
+export default function ScoreChart({ studentId }: { studentId?: string }) {
+  const studentScoreTrend = useStore((s) => s.studentScoreTrend);
   const [activeSubjects, setActiveSubjects] = useState<string[]>([...SUBJECTS]);
+
+  const personalData = useMemo(() => {
+    if (!studentId) return [];
+    return (studentScoreTrend[studentId] || []).map((point) => ({
+      examName: point.examName,
+      date: point.date,
+      ...SUBJECTS.reduce((acc, subject) => {
+        acc[subject] = point[subject];
+        return acc;
+      }, {} as Record<string, string | number>),
+    }));
+  }, [studentId, studentScoreTrend]);
+
+  const isPersonal = Boolean(studentId);
+  const chartData = isPersonal ? personalData : examTrendData;
+  const xKey = isPersonal ? 'examName' : 'date';
 
   const toggleSubject = (subject: string) => {
     setActiveSubjects((prev) =>
@@ -36,9 +54,11 @@ export default function ScoreChart() {
     <div className="bg-white rounded-xl border border-gray-100 p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">班级成绩趋势</h3>
+          <h3 className="text-base font-semibold text-gray-900">
+            {isPersonal ? '个人成绩趋势' : '班级成绩趋势'}
+          </h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            近三次考试各科平均分走势
+            {isPersonal ? '该学生各科成绩走势' : '近三次考试各科平均分走势'}
           </p>
         </div>
       </div>
@@ -65,47 +85,53 @@ export default function ScoreChart() {
         ))}
       </div>
 
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={examTrendData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 12, fill: '#94a3b8' }}
-              tickLine={false}
-              axisLine={{ stroke: '#e2e8f0' }}
-            />
-            <YAxis
-              tick={{ fontSize: 12, fill: '#94a3b8' }}
-              tickLine={false}
-              axisLine={{ stroke: '#e2e8f0' }}
-              domain={[60, 100]}
-            />
-            <Tooltip
-              contentStyle={{
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
-                fontSize: '12px',
-              }}
-            />
-            <Legend
-              wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }}
-            />
-            {activeSubjects.map((subject) => (
-              <Line
-                key={subject}
-                type="monotone"
-                dataKey={subject}
-                stroke={COLORS[subject]}
-                strokeWidth={2}
-                dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
-                activeDot={{ r: 6 }}
+      {chartData.length > 0 ? (
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis
+                dataKey={xKey}
+                tick={{ fontSize: 12, fill: '#94a3b8' }}
+                tickLine={false}
+                axisLine={{ stroke: '#e2e8f0' }}
               />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+              <YAxis
+                tick={{ fontSize: 12, fill: '#94a3b8' }}
+                tickLine={false}
+                axisLine={{ stroke: '#e2e8f0' }}
+                domain={['auto', 'auto']}
+              />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
+                  fontSize: '12px',
+                }}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }}
+              />
+              {activeSubjects.map((subject) => (
+                <Line
+                  key={subject}
+                  type="monotone"
+                  dataKey={subject}
+                  stroke={COLORS[subject]}
+                  strokeWidth={2}
+                  dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                  activeDot={{ r: 6 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="h-64 flex items-center justify-center text-sm text-gray-400">
+          暂无个人成绩趋势数据
+        </div>
+      )}
     </div>
   );
 }
