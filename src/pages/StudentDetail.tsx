@@ -42,8 +42,14 @@ export default function StudentDetail() {
       subject,
       score: score?.score || 0,
       classRank: score?.classRank || 0,
+      subjectRank: score?.subjectRank || 0,
+      schoolRank: score?.schoolRank || 0,
     };
   });
+
+  const latestOverallScore = [...studentScores].sort((a, b) =>
+    b.examId.localeCompare(a.examId)
+  )[0];
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -92,7 +98,12 @@ export default function StudentDetail() {
               <div className="text-right">
                 <p className="text-sm text-gray-500">最近一次考试总分</p>
                 <p className="text-3xl font-bold text-[#2dd4bf] mt-1">{student.totalScore}</p>
-                <p className="text-xs text-gray-400 mt-0.5">月考三</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  班级第 {student.rank} 名
+                  {latestOverallScore && latestOverallScore.schoolRank > 0
+                    ? ` · 学校第 ${latestOverallScore.schoolRank} 名`
+                    : ''}
+                </p>
               </div>
             </div>
           </div>
@@ -128,6 +139,11 @@ export default function StudentDetail() {
                 >
                   <p className="text-xs text-gray-500 mb-1">{score.subject}</p>
                   <p className="text-2xl font-bold text-gray-900">{score.score}</p>
+                  {(score.subjectRank || score.classRank) > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      班内第 {score.subjectRank || score.classRank} 名
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

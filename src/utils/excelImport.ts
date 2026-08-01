@@ -4,9 +4,20 @@ import type { Student, Score, ExamTrendPoint } from '@/types';
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'] as const;
 const SCORE_FIELDS = ['分数', 'score', 'Score', '成绩'];
 const RANK_FIELDS = ['排名', 'rank', 'Rank', '班级排名', 'classRank'];
+const SCHOOL_RANK_FIELDS = ['学校排名', '校排名', 'schoolRank', 'SchoolRank'];
 const STUDENT_NO_FIELDS = ['学号', 'studentNo', 'StudentNo', '准考证号'];
 const NAME_FIELDS = ['姓名', 'name', 'Name', '学生姓名'];
 const TOTAL_FIELDS = ['总分', 'totalScore', 'TotalScore', 'total', '合计'];
+
+function subjectRankFields(subject: string): string[] {
+  return [
+    `${subject}班排名`,
+    `${subject}班内排名`,
+    `${subject}班级排名`,
+    `${subject}排名`,
+    `${subject}SubjectRank`,
+  ];
+}
 
 export interface ComputedRanking {
   studentId: string;
@@ -154,6 +165,8 @@ function parseScoreSheet(
               subject,
               score,
               classRank: Number(getField(r, RANK_FIELDS) || 0),
+              schoolRank: Number(getField(r, SCHOOL_RANK_FIELDS) || 0),
+              subjectRank: Number(getField(r, subjectRankFields(subject)) || 0),
               totalStudents: 45,
             });
 
@@ -193,6 +206,8 @@ function parseScoreSheet(
         subject,
         score,
         classRank: Number(getField(r, RANK_FIELDS) || 0),
+        schoolRank: Number(getField(r, SCHOOL_RANK_FIELDS) || 0),
+        subjectRank: Number(getField(r, RANK_FIELDS) || 0),
         totalStudents: 45,
       });
 
@@ -373,11 +388,11 @@ export function generateTemplateExcel(): Blob {
   XLSX.utils.book_append_sheet(wb, studentSheet, '学生名单');
 
   const scoreData = [
-    { 学号: '2026001', 姓名: '陈思远', 语文: 95, 数学: 100, 英语: 92, 物理: 94, 化学: 95, 生物: 98 },
-    { 学号: '2026002', 姓名: '林晓晴', 语文: 91, 数学: 95, 英语: 89, 物理: 87, 化学: 90, 生物: 93 },
-    { 学号: '2026003', 姓名: '王浩然', 语文: 86, 数学: 91, 英语: 83, 物理: 89, 化学: 85, 生物: 87 },
-    { 学号: '2026004', 姓名: '赵雨桐', 语文: 88, 数学: 93, 英语: 85, 物理: 86, 化学: 88, 生物: 91 },
-    { 学号: '2026005', 姓名: '刘思琪', 语文: 84, 数学: 90, 英语: 87, 物理: 83, 化学: 86, 生物: 88 },
+    { 学号: '2026001', 姓名: '陈思远', 语文: 95, 语文班排名: 1, 数学: 100, 数学班排名: 1, 英语: 92, 英语班排名: 2, 物理: 94, 物理班排名: 1, 化学: 95, 化学班排名: 1, 生物: 98, 生物班排名: 1, 班级排名: 1, 学校排名: 8 },
+    { 学号: '2026002', 姓名: '林晓晴', 语文: 91, 语文班排名: 2, 数学: 95, 数学班排名: 2, 英语: 89, 英语班排名: 3, 物理: 87, 物理班排名: 3, 化学: 90, 化学班排名: 2, 生物: 93, 生物班排名: 2, 班级排名: 2, 学校排名: 16 },
+    { 学号: '2026003', 姓名: '王浩然', 语文: 86, 语文班排名: 4, 数学: 91, 数学班排名: 4, 英语: 83, 英语班排名: 5, 物理: 89, 物理班排名: 2, 化学: 85, 化学班排名: 4, 生物: 87, 生物班排名: 4, 班级排名: 3, 学校排名: 24 },
+    { 学号: '2026004', 姓名: '赵雨桐', 语文: 88, 语文班排名: 3, 数学: 93, 数学班排名: 3, 英语: 85, 英语班排名: 4, 物理: 86, 物理班排名: 4, 化学: 88, 化学班排名: 3, 生物: 91, 生物班排名: 3, 班级排名: 4, 学校排名: 30 },
+    { 学号: '2026005', 姓名: '刘思琪', 语文: 84, 语文班排名: 5, 数学: 90, 数学班排名: 5, 英语: 87, 英语班排名: 1, 物理: 83, 物理班排名: 5, 化学: 86, 化学班排名: 5, 生物: 88, 生物班排名: 5, 班级排名: 5, 学校排名: 35 },
   ];
   const scoreSheet = XLSX.utils.json_to_sheet(scoreData);
   XLSX.utils.book_append_sheet(wb, scoreSheet, '月考三');

@@ -36,6 +36,8 @@ export interface Score {
   subject: string;
   score: number;
   classRank: number;
+  schoolRank: number;
+  subjectRank: number;
   totalStudents: number;
 }
 
@@ -57,4 +59,6 @@ export interface SubjectScore {
   subject: string;
   score: number;
   classRank: number;
+  subjectRank: number;
+  schoolRank: number;
 }

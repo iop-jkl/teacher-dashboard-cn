@@ -101,6 +101,8 @@ function scoreToRow(s: Score): AnyRow {
     subject: s.subject,
     score: s.score,
     class_rank: s.classRank,
+    school_rank: s.schoolRank,
+    subject_rank: s.subjectRank,
     total_students: s.totalStudents,
   };
 }
@@ -112,6 +114,8 @@ function rowToScore(r: AnyRow): Score {
     subject: String(r.subject ?? ''),
     score: Number(r.score ?? 0),
     classRank: Number(r.class_rank ?? 0),
+    schoolRank: Number(r.school_rank ?? 0),
+    subjectRank: Number(r.subject_rank ?? 0),
     totalStudents: Number(r.total_students ?? 0),
   };
 }
@@ -210,7 +214,21 @@ async function deleteStudentRow(id: string) {
 async function upsertScores(rows: Score[]) {
   if (!supabase || rows.length === 0) return;
   const { error } = await supabase.from('scores').upsert(rows.map(scoreToRow));
-  if (error) console.error('[supabase] upsert scores failed:', error.message);
+  if (!error) return;
+  if (/column .* (subject_rank|school_rank)/i.test(error.message)) {
+    const fallbackRows = rows.map((s) => {
+      const row = scoreToRow(s);
+      delete row.subject_rank;
+      delete row.school_rank;
+      return row;
+    });
+    const { error: fallbackError } = await supabase.from('scores').upsert(fallbackRows);
+    if (fallbackError) {
+      console.error('[supabase] upsert scores failed:', fallbackError.message);
+    }
+    return;
+  }
+  console.error('[supabase] upsert scores failed:', error.message);
 }
 async function upsertSchedule(rows: ScheduleEvent[]) {
   if (!supabase || rows.length === 0) return;

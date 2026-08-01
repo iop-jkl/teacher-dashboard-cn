@@ -53,6 +53,11 @@ export default function StudentsPage() {
     return scores.filter((s) => s.studentId === selectedStudent.id);
   }, [scores, selectedStudent]);
 
+  const latestScore = useMemo(() => {
+    if (studentScores.length === 0) return undefined;
+    return [...studentScores].sort((a, b) => b.examId.localeCompare(a.examId))[0];
+  }, [studentScores]);
+
   const handleDeleteStudent = (id: string) => {
     removeStudent(id);
     showToast('学生已删除', 'info');
@@ -297,14 +302,22 @@ export default function StudentsPage() {
             </div>
 
             <div className="p-5 space-y-5">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
                   <p className="text-xs text-gray-500">总分</p>
                   <p className="text-lg font-semibold text-gray-900 mt-1">{selectedStudent.totalScore}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-gray-500">排名</p>
+                  <p className="text-xs text-gray-500">班级排名</p>
                   <p className="text-lg font-semibold text-gray-900 mt-1">第 {selectedStudent.rank} 名</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500">学校排名</p>
+                  <p className="text-lg font-semibold text-gray-900 mt-1">
+                    {latestScore && latestScore.schoolRank > 0
+                      ? `第 ${latestScore.schoolRank} 名`
+                      : '—'}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
                   <p className="text-xs text-gray-500">趋势</p>
@@ -352,8 +365,10 @@ export default function StudentsPage() {
                             }`}>
                               {rate}%
                             </span>
-                            {latest.classRank > 0 && (
-                              <span className="text-xs text-gray-400">第 {latest.classRank} 名</span>
+                            {(latest.subjectRank || latest.classRank) > 0 && (
+                              <span className="text-xs text-gray-400">
+                                班内第 {latest.subjectRank || latest.classRank} 名
+                              </span>
                             )}
                           </div>
                         </div>
@@ -381,7 +396,7 @@ export default function StudentsPage() {
                 />
                 <div className="flex justify-end gap-2 mt-2">
                   <button
-                    onClick={() => setRemarkDraft(selectedStudent.remark || '')}
+                    onClick={() => setRemarkDraft('')}
                     className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
                   >
                     重置
