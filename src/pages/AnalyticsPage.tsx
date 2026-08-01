@@ -1,27 +1,119 @@
 import { useState, useMemo } from 'react';
-import { BarChart3, TrendingUp, Award, Users, PieChart as PieChartIcon, Menu } from 'lucide-react';
+import { BarChart3, TrendingUp, Award, PieChart as PieChartIcon, Menu } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import ExcelImportButton from '@/components/ExcelImportButton';
+import StudentTable from '@/components/StudentTable';
 import { useStore } from '@/store/useStore';
-import { getClassAverageByExam, getTopImprovements, getTopDeclines, EXAM_NAMES, getExamName } from '@/data/mockData';
+import { getClassAverageByExam, EXAM_NAMES, SUBJECTS } from '@/data/mockData';
+import type { ExamTrendPoint } from '@/types';
 
 type ViewType = 'trend' | 'distribution' | 'ranking';
 
+function sumPoint(point: ExamTrendPoint | undefined): number {
+  if (!point) return 0;
+  return SUBJECTS.reduce((sum, subject) => sum + (Number(point[subject]) || 0), 0);
+}
+
 export default function AnalyticsPage() {
-  const { sidebarOpen, openSidebar, closeSidebar, students, currentExamIndex, studentScoreTrend } = useStore();
+  const {
+    sidebarOpen,
+    openSidebar,
+    closeSidebar,
+    students,
+    scores,
+    currentExamIndex,
+    studentScoreTrend,
+    examTrendData,
+  } = useStore();
   const [activeView, setActiveView] = useState<ViewType>('trend');
 
-  const examName = getExamName(currentExamIndex);
-  const classAvgData = useMemo(() => getClassAverageByExam(currentExamIndex), [currentExamIndex]);
-  const topImprovements = useMemo(() => getTopImprovements(currentExamIndex, 5), [currentExamIndex, studentScoreTrend]);
-  const topDeclines = useMemo(() => getTopDeclines(currentExamIndex, 5), [currentExamIndex, studentScoreTrend]);
+  const examList = useMemo(() => {
+    const names = [...new Set(examTrendData.map((p) => p.examName).filter(Boolean))];
+    if (names.length > 0) return names;
+    const fromScores = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    return fromScores.length > 0 ? fromScores : [...EXAM_NAMES];
+  }, [examTrendData, scores]);
+
+  const examIndex = Math.min(Math.max(currentExamIndex, 0), examList.length - 1);
+  const examName = examList[examIndex] || '暂无考试';
+
+  const classAvgData = useMemo(() => {
+    const examScores = scores.filter((s) => s.examId === examName && s.score > 0);
+    if (examScores.length > 0) {
+      const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
+      for (const subject of SUBJECTS) {
+        const list = examScores.filter((s) => s.subject === subject);
+        if (list.length === 0) continue;
+        const avg = list.reduce((sum, s) => sum + s.score, 0) / list.length;
+        result.push({
+          subject,
+          classAverage: Math.round(avg * 10) / 10,
+          gradeAverage: Math.round(avg * 10) / 10,
+        });
+      }
+      return result;
+    }
+    return getClassAverageByExam(examIndex);
+  }, [scores, examName, examIndex]);
+
+  const historyData = useMemo(() => {
+    if (examTrendData.length > 0) {
+      return examTrendData.map((p) => ({
+        name: p.examName,
+        avg:
+          SUBJECTS.reduce((sum, subject) => sum + (Number(p[subject]) || 0), 0) /
+          SUBJECTS.length,
+      }));
+    }
+    return EXAM_NAMES.map((name, idx) => {
+      const data = getClassAverageByExam(idx);
+      const avg = data.reduce((sum, d) => sum + d.classAverage, 0) / (data.length || 1);
+      return { name, avg };
+    });
+  }, [examTrendData]);
+
+  const progressRankings = useMemo(() => {
+    return students
+      .map((student) => {
+        const points = studentScoreTrend[student.id] || [];
+        let total = student.totalScore;
+        let prevTotal = student.totalScore;
+        if (points.length > 0) {
+          const idx = Math.min(examIndex, points.length - 1);
+          total = sumPoint(points[idx]);
+          prevTotal = idx > 0 ? sumPoint(points[idx - 1]) : total;
+        }
+        return { id: student.id, name: student.name, total, diff: total - prevTotal };
+      })
+      .filter((s) => s.total > 0 || s.diff !== 0);
+  }, [students, studentScoreTrend, examIndex]);
+
+  const topImprovements = useMemo(
+    () =>
+      [...progressRankings]
+        .sort((a, b) => b.diff - a.diff)
+        .filter((s) => s.diff > 0)
+        .slice(0, 5),
+    [progressRankings]
+  );
+
+  const topDeclines = useMemo(
+    () =>
+      [...progressRankings]
+        .sort((a, b) => a.diff - b.diff)
+        .filter((s) => s.diff < 0)
+        .slice(0, 5),
+    [progressRankings]
+  );
 
   const views: { key: ViewType; label: string; icon: typeof TrendingUp }[] = [
     { key: 'trend', label: '趋势', icon: TrendingUp },
     { key: 'distribution', label: '学科分布', icon: BarChart3 },
-    { key: 'ranking', label: '进步排行', icon: Award },
+    { key: 'ranking', label: '学生排名', icon: Award },
   ];
 
   const colors = ['#2dd4bf', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#22c55e'];
@@ -57,7 +149,7 @@ export default function AnalyticsPage() {
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
             <div className="flex items-center gap-4">
               <h3 className="text-base font-semibold text-gray-900">分析视图</h3>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
                 {views.map((view) => (
                   <button
                     key={view.key}
@@ -81,25 +173,21 @@ export default function AnalyticsPage() {
               <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
                 <h3 className="text-base font-semibold text-gray-900 mb-4">班级均分历史</h3>
                 <div className="h-64 flex items-end justify-between gap-2 px-2">
-                  {EXAM_NAMES.map((examName, idx) => {
-                    const data = getClassAverageByExam(idx);
-                    const totalClassAvg = data.reduce((sum, d) => sum + d.classAverage, 0) / (data.length || 1);
-                    const maxAvg = 580;
-                    const heightPercent = (totalClassAvg / maxAvg) * 100;
+                  {historyData.map((h, idx) => {
+                    const isCurrent = historyData.findIndex((x) => x.name === examName) === idx;
+                    const heightPercent = Math.max((h.avg / 580) * 100, 2);
                     return (
-                      <div key={examName} className="flex-1 flex flex-col items-center gap-2">
-                        <div className="text-xs text-gray-500 font-medium">
-                          {totalClassAvg.toFixed(0)}
-                        </div>
+                      <div key={`${h.name}-${idx}`} className="flex-1 flex flex-col items-center gap-2">
+                        <div className="text-xs text-gray-500 font-medium">{h.avg.toFixed(0)}</div>
                         <div
                           className={`w-full rounded-t-lg transition-all ${
-                            idx === currentExamIndex
+                            isCurrent
                               ? 'bg-gradient-to-t from-[#2dd4bf] to-[#5eead4]'
                               : 'bg-gradient-to-t from-gray-200 to-gray-100'
                           }`}
                           style={{ height: `${heightPercent}%` }}
                         />
-                        <div className="text-xs text-gray-500">{examName}</div>
+                        <div className="text-xs text-gray-500">{h.name}</div>
                       </div>
                     );
                   })}
@@ -108,10 +196,7 @@ export default function AnalyticsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {classAvgData.map((d, idx) => (
-                  <div
-                    key={d.subject}
-                    className="bg-white rounded-xl border border-gray-100 p-4"
-                  >
+                  <div key={d.subject} className="bg-white rounded-xl border border-gray-100 p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-700">{d.subject}</span>
                       <span
@@ -127,6 +212,11 @@ export default function AnalyticsPage() {
                     </div>
                   </div>
                 ))}
+                {classAvgData.length === 0 && (
+                  <div className="col-span-full py-10 text-center text-sm text-gray-400">
+                    暂无成绩数据
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -149,13 +239,16 @@ export default function AnalyticsPage() {
                         <div
                           className="h-full rounded-full transition-all"
                           style={{
-                            width: `${(d.classAverage / 100) * 100}%`,
+                            width: `${Math.min((d.classAverage / 100) * 100, 100)}%`,
                             backgroundColor: colors[idx % colors.length],
                           }}
                         />
                       </div>
                     </div>
                   ))}
+                  {classAvgData.length === 0 && (
+                    <div className="py-10 text-center text-sm text-gray-400">暂无成绩数据</div>
+                  )}
                 </div>
               </div>
 
@@ -170,7 +263,7 @@ export default function AnalyticsPage() {
                       const total = classAvgData.reduce((sum, d) => sum + d.classAverage, 0);
                       let cumulative = 0;
                       return classAvgData.map((d, idx) => {
-                        const pct = (d.classAverage / total) * 100;
+                        const pct = total > 0 ? (d.classAverage / total) * 100 : 0;
                         const dasharray = `${pct} ${100 - pct}`;
                         const offset = -cumulative;
                         cumulative += pct;
@@ -213,60 +306,66 @@ export default function AnalyticsPage() {
           )}
 
           {activeView === 'ranking' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-emerald-500" />
-                  进步排行 Top 5
-                </h3>
-                <div className="space-y-3">
-                  {topImprovements.map((s, idx) => (
-                    <div
-                      key={s.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50/50"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm font-medium">
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{s.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {examName} · 总分 {s.total}
-                        </p>
-                      </div>
-                      <span className="text-sm font-semibold text-emerald-600">
-                        +{s.diff}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="space-y-6">
+              <StudentTable students={students} scores={scores} />
 
-              <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-red-500 rotate-180" />
-                  退步关注 Top 5
-                </h3>
-                <div className="space-y-3">
-                  {topDeclines.map((s, idx) => (
-                    <div
-                      key={s.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-red-50/50"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center text-sm font-medium">
-                        {idx + 1}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
+                  <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-emerald-500" />
+                    进步排行 Top 5
+                  </h3>
+                  <div className="space-y-3">
+                    {topImprovements.map((s, idx) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50/50"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm font-medium">
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {examName} · 总分 {s.total}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-emerald-600">+{s.diff}</span>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{s.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {examName} · 总分 {s.total}
-                        </p>
+                    ))}
+                    {topImprovements.length === 0 && (
+                      <div className="py-10 text-center text-sm text-gray-400">暂无进步数据</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
+                  <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-red-500 rotate-180" />
+                    退步关注 Top 5
+                  </h3>
+                  <div className="space-y-3">
+                    {topDeclines.map((s, idx) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-red-50/50"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center text-sm font-medium">
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {examName} · 总分 {s.total}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-red-600">{s.diff}</span>
                       </div>
-                      <span className="text-sm font-semibold text-red-600">
-                        {s.diff}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
+                    {topDeclines.length === 0 && (
+                      <div className="py-10 text-center text-sm text-gray-400">暂无退步数据</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

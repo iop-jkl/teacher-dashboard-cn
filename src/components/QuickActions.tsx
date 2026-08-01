@@ -3,7 +3,7 @@ import {
   FilePlus,
   Users,
   BarChart3,
-  CalendarPlus,
+  BellPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PageKey } from '@/store/useStore';
@@ -31,11 +31,11 @@ const actions = [
     page: 'analytics' as PageKey,
   },
   {
-    icon: CalendarPlus,
-    label: '添加日程',
+    icon: BellPlus,
+    label: '添加提醒',
     color: 'bg-amber-50 text-amber-600',
     action: 'navigate',
-    page: 'schedule' as PageKey,
+    page: 'dashboard' as PageKey,
   },
 ];
 
@@ -48,7 +48,7 @@ export default function QuickActions({ onToast }: QuickActionsProps) {
 
   const handleClick = (action: typeof actions[number]) => {
     if (action.action === 'navigate' && action.page) {
-      navigate(`/${action.page}`);
+      navigate(action.page === 'dashboard' ? '/' : `/${action.page}`);
     } else if (action.action === 'import') {
       const input = document.createElement('input');
       input.type = 'file';

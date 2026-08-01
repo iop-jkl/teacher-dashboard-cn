@@ -8,7 +8,6 @@ import ScoreChart from '@/components/ScoreChart';
 import StudentTable from '@/components/StudentTable';
 import TopStudentsRanking from '@/components/TopStudentsRanking';
 import QuickActions from '@/components/QuickActions';
-import AnnouncementCard from '@/components/AnnouncementCard';
 import StatsOverview from '@/components/StatsOverview';
 import StudentProgressBoard from '@/components/StudentProgressBoard';
 import ExcelImportButton from '@/components/ExcelImportButton';
@@ -34,7 +33,6 @@ export default function Dashboard() {
     currentExamIndex,
     setCurrentExamIndex,
     closeSidebar,
-    announcements,
     students,
     scores,
     studentScoreTrend,
@@ -248,7 +246,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <AnnouncementCard announcements={announcements} />
             </div>
 
             <div className="lg:col-span-2 space-y-6">
