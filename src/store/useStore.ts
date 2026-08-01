@@ -52,7 +52,11 @@ const defaultSettings: UserSettings = {
   teacherName: '俞老师',
   className: '高一(7)班',
   position: '班主任',
-  examDates: {},
+  examDates: {
+    月考一: '2026-05-01',
+    期中考试: '2026-07-01',
+    月考二: '2026-08-01',
+  },
   notifications: {
     examReminder: true,
     homeworkReminder: true,
