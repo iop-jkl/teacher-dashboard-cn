@@ -100,7 +100,8 @@ function parseScoreSheet(
   sheet: XLSX.WorkSheet,
   examName: string,
   examDate: string,
-  studentIdMap: Map<string, string>
+  studentIdMap: Map<string, string>,
+  sheetName = examName
 ): {
   scores: Score[];
   studentTrends: Record<string, ExamTrendPoint[]>;
@@ -111,7 +112,7 @@ function parseScoreSheet(
   const warnings: string[] = [];
   const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
   if (data.length === 0) {
-    warnings.push(`工作表"${examName}"为空`);
+    warnings.push(`工作表"${sheetName}"为空`);
     return { scores: [], studentTrends: {}, examTrendPoint: null, computedRankings: [], warnings };
   }
 
@@ -139,7 +140,7 @@ function parseScoreSheet(
   const isLongFormat = !isWideFormat && hasField(firstRow, ['学科', 'subject', '学科名称']);
 
   if (!isWideFormat && !isLongFormat) {
-    warnings.push(`工作表"${examName}"无法识别为成绩表格式`);
+    warnings.push(`工作表"${sheetName}"无法识别为成绩表格式`);
     return { scores: [], studentTrends: {}, examTrendPoint: null, computedRankings: [], warnings };
   }
 
@@ -296,6 +297,7 @@ export async function parseExcelFile(file: File): Promise<ImportResult> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array' });
   const warnings: string[] = [];
+  const importedExamName = file.name.replace(/\.[^.]+$/, '').trim() || '成绩导入';
 
   const students: Student[] = [];
   const scores: Score[] = [];
@@ -337,7 +339,13 @@ export async function parseExcelFile(file: File): Promise<ImportResult> {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
-    const result = parseScoreSheet(sheet, sheetName, new Date().toISOString().split('T')[0], studentIdMap);
+    const result = parseScoreSheet(
+      sheet,
+      importedExamName,
+      new Date().toISOString().split('T')[0],
+      studentIdMap,
+      sheetName
+    );
 
     if (result.warnings.length > 0) {
       warnings.push(...result.warnings);
@@ -345,7 +353,7 @@ export async function parseExcelFile(file: File): Promise<ImportResult> {
 
     if (result.scores.length > 0) {
       if (!examName) {
-        examName = sheetName;
+        examName = importedExamName;
       }
       scores.push(...result.scores);
 

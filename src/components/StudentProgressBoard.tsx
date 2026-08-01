@@ -1,17 +1,14 @@
 import { Link } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Award, Target, ChevronRight } from 'lucide-react';
-import { getStudentExamRank, getExamName, EXAM_NAMES } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 interface Props {
-  examIndex: number;
+  examName: string;
+  hasPrev: boolean;
+  students: { id: string; name: string; total: number; rank: number; trend: number }[];
 }
 
-export default function StudentProgressBoard({ examIndex }: Props) {
-  const students = getStudentExamRank(examIndex);
-  const examName = getExamName(examIndex);
-  const hasPrev = examIndex > 0;
-
+export default function StudentProgressBoard({ examName, hasPrev, students }: Props) {
   const bestProgress = [...students].sort((a, b) => b.trend - a.trend).slice(0, 3);
   const worstDecline = [...students].sort((a, b) => a.trend - b.trend).slice(0, 3);
 
@@ -60,14 +57,6 @@ export default function StudentProgressBoard({ examIndex }: Props) {
       {!hasPrev ? (
         <div className="py-10 text-center text-gray-400 text-sm">
           首次考试暂无对比数据，请切换到后续考试查看进步榜
-          <div className="flex justify-center gap-2 mt-4">
-            {EXAM_NAMES.map((name, idx) => (
-              <span key={name} className="text-xs text-gray-300">
-                {name}
-                {idx < EXAM_NAMES.length - 1 && ' → '}
-              </span>
-            ))}
-          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -8,6 +8,7 @@ import ScoreChart from '@/components/ScoreChart';
 import StudentTable from '@/components/StudentTable';
 import TopStudentsRanking from '@/components/TopStudentsRanking';
 import QuickActions from '@/components/QuickActions';
+import AddReminderModal from '@/components/AddReminderModal';
 import StatsOverview from '@/components/StatsOverview';
 import StudentProgressBoard from '@/components/StudentProgressBoard';
 import ExcelImportButton from '@/components/ExcelImportButton';
@@ -17,11 +18,14 @@ import { useToastStore } from '@/store/useToast';
 import {
   SUBJECTS,
   EXAM_NAMES,
-  getTopImprovements,
-  getTopDeclines,
   getClassAverageByExam,
-  getExamName,
 } from '@/data/mockData';
+import type { ExamTrendPoint } from '@/types';
+
+function sumPoint(point: ExamTrendPoint | undefined): number {
+  if (!point) return 0;
+  return SUBJECTS.reduce((sum, subject) => sum + (Number(point[subject]) || 0), 0);
+}
 
 export default function Dashboard() {
   const {
@@ -36,37 +40,115 @@ export default function Dashboard() {
     students,
     scores,
     studentScoreTrend,
+    examTrendData,
   } = useStore();
 
   const showToast = useToastStore((s) => s.showToast);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showAddReminder, setShowAddReminder] = useState(false);
 
   const completedCount = reminders.filter((r) => r.completed).length;
   const pendingCount = reminders.length - completedCount;
 
+  const examList = useMemo(() => {
+    const names = [...new Set(examTrendData.map((p) => p.examName).filter(Boolean))];
+    if (names.length > 0) return names;
+    const fromScores = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    return fromScores.length > 0 ? fromScores : [...EXAM_NAMES];
+  }, [examTrendData, scores]);
+
+  const clampedExamIndex = Math.min(Math.max(currentExamIndex, 0), examList.length - 1);
+  const latestExamName = examList[clampedExamIndex] || '暂无考试';
+  const examHasPrev = clampedExamIndex > 0;
+  const prevExamName = examHasPrev ? examList[clampedExamIndex - 1] : '';
+
+  const examAverageData = useMemo(() => {
+    const examScores = scores.filter((s) => s.examId === latestExamName && s.score > 0);
+    if (examScores.length > 0) {
+      const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
+      for (const subject of SUBJECTS) {
+        const list = examScores.filter((s) => s.subject === subject);
+        if (list.length === 0) continue;
+        const avg = list.reduce((sum, s) => sum + s.score, 0) / list.length;
+        result.push({
+          subject,
+          classAverage: Math.round(avg * 10) / 10,
+          gradeAverage: Math.round(avg * 10) / 10,
+        });
+      }
+      return result;
+    }
+    return getClassAverageByExam(clampedExamIndex);
+  }, [scores, latestExamName, clampedExamIndex]);
+
+  const prevExamAverageData = useMemo(() => {
+    if (!prevExamName) return [];
+    const examScores = scores.filter((s) => s.examId === prevExamName && s.score > 0);
+    if (examScores.length > 0) {
+      const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
+      for (const subject of SUBJECTS) {
+        const list = examScores.filter((s) => s.subject === subject);
+        if (list.length === 0) continue;
+        const avg = list.reduce((sum, s) => sum + s.score, 0) / list.length;
+        result.push({
+          subject,
+          classAverage: Math.round(avg * 10) / 10,
+          gradeAverage: Math.round(avg * 10) / 10,
+        });
+      }
+      return result;
+    }
+    return getClassAverageByExam(clampedExamIndex - 1);
+  }, [scores, prevExamName, clampedExamIndex]);
+
+  const progressRankings = useMemo(() => {
+    return students
+      .map((student) => {
+        const points = studentScoreTrend[student.id] || [];
+        let total = student.totalScore;
+        let prevTotal = student.totalScore;
+        if (points.length > 0) {
+          const idx = Math.min(clampedExamIndex, points.length - 1);
+          total = sumPoint(points[idx]);
+          prevTotal = idx > 0 ? sumPoint(points[idx - 1]) : total;
+        }
+        return { id: student.id, name: student.name, total, diff: total - prevTotal };
+      })
+      .filter((s) => s.total > 0 || s.diff !== 0);
+  }, [students, studentScoreTrend, clampedExamIndex]);
+
   const topImprovements = useMemo(
-    () => getTopImprovements(currentExamIndex, 5),
-    [currentExamIndex, studentScoreTrend]
+    () => [...progressRankings].sort((a, b) => b.diff - a.diff).slice(0, 5),
+    [progressRankings]
   );
   const topDeclines = useMemo(
-    () => getTopDeclines(currentExamIndex, 5),
-    [currentExamIndex, studentScoreTrend]
+    () => [...progressRankings].sort((a, b) => a.diff - b.diff).slice(0, 5),
+    [progressRankings]
   );
-  const examAverageData = useMemo(
-    () => getClassAverageByExam(currentExamIndex),
-    [currentExamIndex]
-  );
-  const prevExamAverageData = currentExamIndex > 0 ? getClassAverageByExam(currentExamIndex - 1) : [];
 
-  const latestExamName = getExamName(currentExamIndex);
-  const examHasPrev = currentExamIndex > 0;
+  const progressBoardStudents = useMemo(
+    () =>
+      students.map((student) => {
+        const p = progressRankings.find((r) => r.id === student.id);
+        return {
+          id: student.id,
+          name: student.name,
+          total: p?.total ?? student.totalScore,
+          rank: student.rank,
+          trend: p?.diff ?? 0,
+        };
+      }),
+    [students, progressRankings]
+  );
 
   const prevExam = () => {
-    if (currentExamIndex > 0) setCurrentExamIndex(currentExamIndex - 1);
+    if (clampedExamIndex > 0) setCurrentExamIndex(clampedExamIndex - 1);
   };
   const nextExam = () => {
-    if (currentExamIndex < EXAM_NAMES.length - 1) setCurrentExamIndex(currentExamIndex + 1);
+    if (clampedExamIndex < examList.length - 1) setCurrentExamIndex(clampedExamIndex + 1);
   };
 
   const getSubjectAverage = (subject: string, data: typeof examAverageData) =>
@@ -176,7 +258,10 @@ export default function Dashboard() {
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
           <StatsOverview />
 
-          <QuickActions onToast={(msg) => showToast(msg, 'info')} />
+          <QuickActions
+            onToast={(msg) => showToast(msg, 'info')}
+            onAddReminder={() => setShowAddReminder(true)}
+          />
 
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -189,7 +274,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={prevExam}
-                  disabled={currentExamIndex === 0}
+                  disabled={clampedExamIndex === 0}
                   className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="上一场考试"
                 >
@@ -200,7 +285,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   onClick={nextExam}
-                  disabled={currentExamIndex === EXAM_NAMES.length - 1}
+                  disabled={clampedExamIndex === examList.length - 1}
                   className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="下一场考试"
                 >
@@ -209,12 +294,12 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex gap-2 mt-4 overflow-x-auto pb-1">
-              {EXAM_NAMES.map((name, idx) => (
+              {examList.map((name, idx) => (
                 <button
                   key={name}
                   onClick={() => setCurrentExamIndex(idx)}
                   className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-                    idx === currentExamIndex
+                    idx === clampedExamIndex
                       ? 'bg-[#2dd4bf] text-white'
                       : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                   }`}
@@ -296,7 +381,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <StudentProgressBoard examIndex={currentExamIndex} />
+          <StudentProgressBoard
+            examName={latestExamName}
+            hasPrev={examHasPrev}
+            students={progressBoardStudents}
+          />
 
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
@@ -305,6 +394,8 @@ export default function Dashboard() {
           <StudentTable students={students} scores={scores} />
         </div>
       </main>
+
+      {showAddReminder && <AddReminderModal onClose={() => setShowAddReminder(false)} />}
     </div>
   );
 }

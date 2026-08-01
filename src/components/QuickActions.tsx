@@ -34,21 +34,25 @@ const actions = [
     icon: BellPlus,
     label: '添加提醒',
     color: 'bg-amber-50 text-amber-600',
-    action: 'navigate',
-    page: 'dashboard' as PageKey,
+    action: 'add-reminder',
   },
 ];
 
 interface QuickActionsProps {
   onToast?: (message: string) => void;
+  onAddReminder?: () => void;
 }
 
-export default function QuickActions({ onToast }: QuickActionsProps) {
+export default function QuickActions({ onToast, onAddReminder }: QuickActionsProps) {
   const navigate = useNavigate();
 
   const handleClick = (action: typeof actions[number]) => {
+    if (action.action === 'add-reminder') {
+      onAddReminder?.();
+      return;
+    }
     if (action.action === 'navigate' && action.page) {
-      navigate(action.page === 'dashboard' ? '/' : `/${action.page}`);
+      navigate(`/${action.page}`);
     } else if (action.action === 'import') {
       const input = document.createElement('input');
       input.type = 'file';
