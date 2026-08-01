@@ -35,6 +35,8 @@ jobs:
     env:
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
       GIT_TERMINAL_PROMPT: '0'
+      GIT_TRACE: '1'
+      GIT_CURL_VERBOSE: '1'
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -49,4 +51,4 @@ jobs:
           git add -A
           git commit --allow-empty -m "chore: deploy to Gitee Pages"
           AUTH=$(printf '%s:%s' 'iop-jkl' "$GITEE_TOKEN" | base64)
-          timeout 180 git -c credential.helper= -c http.extraheader="Authorization: Basic $AUTH" push --force https://gitee.com/iop-jkl/teacher-dashboard-cn.git HEAD:gitee-pages
+          timeout 60 git -c credential.helper= -c http.extraheader="Authorization: Basic $AUTH" push --force https://gitee.com/iop-jkl/teacher-dashboard-cn.git HEAD:gitee-pages
