@@ -1,0 +1,698 @@
+import { create } from 'zustand';
+import type { Reminder, Student, Announcement, Exam, Score } from '@/types';
+import type { ExamTrendPoint } from '@/types';
+import type { ComputedRanking } from '@/utils/excelImport';
+import {
+  mockReminders,
+  mockStudents,
+  mockAnnouncements,
+  mockExams,
+  mockScores,
+  studentScoreTrend as initialStudentScoreTrend,
+  examTrendData as initialExamTrendData,
+} from '@/data/mockData';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+
+export type PageKey = 'dashboard' | 'students' | 'analytics' | 'schedule' | 'settings';
+
+export interface ScheduleEvent {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  location: string;
+  type: 'exam' | 'meeting' | 'activity' | 'deadline';
+}
+
+const initialScheduleEvents: ScheduleEvent[] = [
+  { id: '1', title: '期中考试', date: '2026-08-05', time: '08:00', location: '教学楼', type: 'exam' },
+  { id: '2', title: '期中考试', date: '2026-08-06', time: '08:00', location: '教学楼', type: 'exam' },
+  { id: '3', title: '期中考试', date: '2026-08-07', time: '08:00', location: '教学楼', type: 'exam' },
+  { id: '4', title: '家长会', date: '2026-07-31', time: '14:00', location: '学校礼堂', type: 'meeting' },
+  { id: '5', title: '收实践报告', date: '2026-08-01', time: '17:00', location: '办公室', type: 'deadline' },
+  { id: '6', title: '备课组会议', date: '2026-07-30', time: '10:00', location: '教研室', type: 'meeting' },
+  { id: '7', title: '主题班会', date: '2026-08-08', time: '15:00', location: '高一(3)班教室', type: 'activity' },
+  { id: '8', title: '月考四', date: '2026-08-20', time: '08:00', location: '教学楼', type: 'exam' },
+];
+
+export interface UserSettings {
+  teacherName: string;
+  className: string;
+  position: string;
+  notifications: {
+    examReminder: boolean;
+    homeworkReminder: boolean;
+    declineAlert: boolean;
+    parentNotification: boolean;
+  };
+}
+
+const defaultSettings: UserSettings = {
+  teacherName: '俞老师',
+  className: '高一(7)班',
+  position: '班主任',
+  notifications: {
+    examReminder: true,
+    homeworkReminder: true,
+    declineAlert: true,
+    parentNotification: false,
+  },
+};
+
+// ============================================================
+// Supabase 行 ↔ 对象 映射
+// ============================================================
+type AnyRow = Record<string, unknown>;
+
+function studentToRow(s: Student): AnyRow {
+  return {
+    id: s.id,
+    name: s.name,
+    student_no: s.studentNo,
+    class_name: s.className,
+    avatar: s.avatar,
+    total_score: s.totalScore,
+    rank: s.rank,
+    trend: s.trend,
+    trend_value: s.trendValue,
+    remark: s.remark ?? null,
+  };
+}
+function rowToStudent(r: AnyRow): Student {
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ''),
+    studentNo: String(r.student_no ?? ''),
+    className: String(r.class_name ?? ''),
+    avatar: String(r.avatar ?? ''),
+    totalScore: Number(r.total_score ?? 0),
+    rank: Number(r.rank ?? 0),
+    trend: (r.trend as Student['trend']) ?? 'stable',
+    trendValue: Number(r.trend_value ?? 0),
+    remark: r.remark == null ? undefined : String(r.remark),
+  };
+}
+
+function scoreToRow(s: Score): AnyRow {
+  return {
+    id: s.id,
+    student_id: s.studentId,
+    exam_id: s.examId,
+    subject: s.subject,
+    score: s.score,
+    class_rank: s.classRank,
+    total_students: s.totalStudents,
+  };
+}
+function rowToScore(r: AnyRow): Score {
+  return {
+    id: String(r.id),
+    studentId: String(r.student_id ?? ''),
+    examId: String(r.exam_id ?? ''),
+    subject: String(r.subject ?? ''),
+    score: Number(r.score ?? 0),
+    classRank: Number(r.class_rank ?? 0),
+    totalStudents: Number(r.total_students ?? 0),
+  };
+}
+
+function scheduleToRow(e: ScheduleEvent): AnyRow {
+  return { id: e.id, title: e.title, date: e.date, time: e.time, location: e.location, type: e.type };
+}
+function rowToSchedule(r: AnyRow): ScheduleEvent {
+  return {
+    id: String(r.id),
+    title: String(r.title ?? ''),
+    date: String(r.date ?? ''),
+    time: String(r.time ?? ''),
+    location: String(r.location ?? ''),
+    type: (r.type as ScheduleEvent['type']) ?? 'activity',
+  };
+}
+
+function reminderToRow(r: Reminder): AnyRow {
+  return {
+    id: r.id,
+    title: r.title,
+    content: r.content,
+    type: r.type,
+    due_date: r.dueDate,
+    completed: r.completed,
+  };
+}
+function rowToReminder(r: AnyRow): Reminder {
+  return {
+    id: String(r.id),
+    title: String(r.title ?? ''),
+    content: String(r.content ?? ''),
+    type: (r.type as Reminder['type']) ?? 'todo',
+    dueDate: String(r.due_date ?? ''),
+    completed: Boolean(r.completed),
+  };
+}
+
+function announcementToRow(a: Announcement): AnyRow {
+  return {
+    id: a.id,
+    title: a.title,
+    content: a.content,
+    level: a.level,
+    date: a.date,
+  };
+}
+function rowToAnnouncement(r: AnyRow): Announcement {
+  return {
+    id: String(r.id),
+    title: String(r.title ?? ''),
+    content: String(r.content ?? ''),
+    level: (r.level as Announcement['level']) ?? 'info',
+    date: String(r.date ?? ''),
+  };
+}
+
+function settingsToRow(s: UserSettings): AnyRow {
+  return {
+    id: 'default',
+    teacher_name: s.teacherName,
+    class_name: s.className,
+    position: s.position,
+    notifications: s.notifications,
+  };
+}
+function rowToSettings(r: AnyRow): UserSettings {
+  const n = (r.notifications ?? {}) as Partial<UserSettings['notifications']>;
+  return {
+    teacherName: String(r.teacher_name ?? defaultSettings.teacherName),
+    className: String(r.class_name ?? defaultSettings.className),
+    position: String(r.position ?? defaultSettings.position),
+    notifications: {
+      examReminder: n.examReminder ?? defaultSettings.notifications.examReminder,
+      homeworkReminder: n.homeworkReminder ?? defaultSettings.notifications.homeworkReminder,
+      declineAlert: n.declineAlert ?? defaultSettings.notifications.declineAlert,
+      parentNotification: n.parentNotification ?? defaultSettings.notifications.parentNotification,
+    },
+  };
+}
+
+// ============================================================
+// 同步辅助（fire-and-forget，未配置时为空操作）
+// ============================================================
+async function upsertStudents(rows: Student[]) {
+  if (!supabase || rows.length === 0) return;
+  const { error } = await supabase.from('students').upsert(rows.map(studentToRow));
+  if (error) console.error('[supabase] upsert students failed:', error.message);
+}
+async function deleteStudentRow(id: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('students').delete().eq('id', id);
+  if (error) console.error('[supabase] delete student failed:', error.message);
+}
+async function upsertScores(rows: Score[]) {
+  if (!supabase || rows.length === 0) return;
+  const { error } = await supabase.from('scores').upsert(rows.map(scoreToRow));
+  if (error) console.error('[supabase] upsert scores failed:', error.message);
+}
+async function upsertSchedule(rows: ScheduleEvent[]) {
+  if (!supabase || rows.length === 0) return;
+  const { error } = await supabase.from('schedule_events').upsert(rows.map(scheduleToRow));
+  if (error) console.error('[supabase] upsert schedule failed:', error.message);
+}
+async function deleteScheduleRow(id: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('schedule_events').delete().eq('id', id);
+  if (error) console.error('[supabase] delete schedule failed:', error.message);
+}
+async function upsertReminders(rows: Reminder[]) {
+  if (!supabase || rows.length === 0) return;
+  const { error } = await supabase.from('reminders').upsert(rows.map(reminderToRow));
+  if (error) console.error('[supabase] upsert reminders failed:', error.message);
+}
+async function deleteReminderRow(id: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('reminders').delete().eq('id', id);
+  if (error) console.error('[supabase] delete reminder failed:', error.message);
+}
+async function upsertAnnouncements(rows: Announcement[]) {
+  if (!supabase || rows.length === 0) return;
+  const { error } = await supabase.from('announcements').upsert(rows.map(announcementToRow));
+  if (error) console.error('[supabase] upsert announcements failed:', error.message);
+}
+async function deleteAnnouncementRow(id: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('announcements').delete().eq('id', id);
+  if (error) console.error('[supabase] delete announcement failed:', error.message);
+}
+async function upsertSettings(s: UserSettings) {
+  if (!supabase) return;
+  const { error } = await supabase.from('user_settings').upsert(settingsToRow(s));
+  if (error) console.error('[supabase] upsert settings failed:', error.message);
+}
+
+// ============================================================
+// 由 scores 派生 exam / trend 数据（保持 Analytics 与持久化数据一致）
+// ============================================================
+function deriveExamData(scores: Score[]): {
+  exams: Exam[];
+  studentScoreTrend: Record<string, ExamTrendPoint[]>;
+  examTrendData: ExamTrendPoint[];
+} {
+  const studentTrend: Record<string, ExamTrendPoint[]> = {};
+  const examAgg: Record<string, { sum: Record<string, number>; count: Record<string, number> }> = {};
+  const examOrder: string[] = [];
+
+  for (const s of scores) {
+    if (!studentTrend[s.studentId]) studentTrend[s.studentId] = [];
+    let point = studentTrend[s.studentId].find((p) => p.examName === s.examId);
+    if (!point) {
+      point = { examName: s.examId, date: '' };
+      studentTrend[s.studentId].push(point);
+    }
+    point[s.subject] = s.score;
+
+    if (!examAgg[s.examId]) {
+      examAgg[s.examId] = { sum: {}, count: {} };
+      examOrder.push(s.examId);
+    }
+    examAgg[s.examId].sum[s.subject] = (examAgg[s.examId].sum[s.subject] || 0) + s.score;
+    examAgg[s.examId].count[s.subject] = (examAgg[s.examId].count[s.subject] || 0) + 1;
+  }
+
+  for (const sid of Object.keys(studentTrend)) {
+    studentTrend[sid].sort((a, b) => examOrder.indexOf(a.examName) - examOrder.indexOf(b.examName));
+  }
+
+  const examTrendData: ExamTrendPoint[] = examOrder.map((name) => {
+    const p: ExamTrendPoint = { examName: name, date: '' };
+    for (const subj of Object.keys(examAgg[name].sum)) {
+      p[subj] = Math.round((examAgg[name].sum[subj] / examAgg[name].count[subj]) * 10) / 10;
+    }
+    return p;
+  });
+
+  const exams: Exam[] = [];
+  for (const name of examOrder) {
+    for (const subj of Object.keys(examAgg[name].sum)) {
+      const avg = Math.round((examAgg[name].sum[subj] / examAgg[name].count[subj]) * 10) / 10;
+      exams.push({
+        id: `${name}-${subj}`,
+        name,
+        date: new Date().toISOString().slice(0, 10),
+        subject: subj,
+        classAverage: avg,
+        gradeAverage: avg,
+      });
+    }
+  }
+
+  return { exams, studentScoreTrend: studentTrend, examTrendData };
+}
+
+// ============================================================
+// 首次初始化：把 mock 基线写入 Supabase
+// ============================================================
+async function seedSupabase() {
+  if (!supabase) return;
+  try {
+    await Promise.all([
+      supabase.from('students').upsert(mockStudents.map(studentToRow)),
+      supabase.from('schedule_events').upsert(initialScheduleEvents.map(scheduleToRow)),
+      supabase.from('reminders').upsert(mockReminders.map(reminderToRow)),
+      supabase.from('announcements').upsert(mockAnnouncements.map(announcementToRow)),
+      supabase.from('user_settings').upsert(settingsToRow(defaultSettings)),
+    ]);
+  } catch (e) {
+    console.error('[supabase] seed failed', e);
+  }
+}
+
+// 防止 StrictMode 重复加载
+let loadPromise: Promise<void> | null = null;
+
+interface Store {
+  dataLoaded: boolean;
+  supabaseError: string | null;
+  loadFromSupabase: () => Promise<void>;
+
+  reminders: Reminder[];
+  toggleReminder: (id: string) => void;
+  addReminder: (r: Omit<Reminder, 'id'>) => void;
+  removeReminder: (id: string) => void;
+
+  students: Student[];
+  addStudent: (s: Omit<Student, 'id'>) => void;
+  updateStudent: (id: string, updates: Partial<Student>) => void;
+  removeStudent: (id: string) => void;
+  importStudents: (students: Student[]) => void;
+  updateStudentRanks: (rankings: ComputedRanking[]) => void;
+
+  announcements: Announcement[];
+  addAnnouncement: (a: Omit<Announcement, 'id'>) => void;
+  removeAnnouncement: (id: string) => void;
+
+  exams: Exam[];
+  scores: Score[];
+  studentScoreTrend: Record<string, ExamTrendPoint[]>;
+  examTrendData: ExamTrendPoint[];
+  importScores: (
+    newScores: Score[],
+    newTrend: Record<string, ExamTrendPoint[]>,
+    newExamTrend: ExamTrendPoint[]
+  ) => void;
+  importExamScores: (params: {
+    newScores: Score[];
+    newTrend: Record<string, ExamTrendPoint[]>;
+    newExamTrend: ExamTrendPoint[];
+    rankings: ComputedRanking[];
+    examName: string;
+  }) => void;
+
+  scheduleEvents: ScheduleEvent[];
+  addScheduleEvent: (e: Omit<ScheduleEvent, 'id'>) => void;
+  removeScheduleEvent: (id: string) => void;
+
+  activeClass: string;
+  setActiveClass: (cls: string) => void;
+
+  sidebarOpen: boolean;
+  openSidebar: () => void;
+  closeSidebar: () => void;
+  toggleSidebar: () => void;
+
+  activePage: PageKey;
+  setActivePage: (page: PageKey) => void;
+
+  currentExamIndex: number;
+  setCurrentExamIndex: (idx: number) => void;
+
+  userSettings: UserSettings;
+  updateSettings: (s: Partial<UserSettings>) => void;
+  updateNotification: (key: keyof UserSettings['notifications'], value: boolean) => void;
+}
+
+export const useStore = create<Store>((set, get) => ({
+  dataLoaded: false,
+  supabaseError: null,
+  loadFromSupabase: async () => {
+    if (loadPromise) return loadPromise;
+    if (!isSupabaseConfigured || !supabase) {
+      set({ dataLoaded: true, supabaseError: null });
+      return;
+    }
+    loadPromise = (async () => {
+      try {
+        const { data: settingsRows, error: sErr } = await supabase
+          .from('user_settings')
+          .select('*');
+        if (sErr) throw sErr;
+
+        // 尚未初始化：写入 mock 基线，保持本地 mock 状态
+        if (!settingsRows || settingsRows.length === 0) {
+          await seedSupabase();
+          set({
+            students: [...mockStudents],
+            scores: [...mockScores],
+            scheduleEvents: [...initialScheduleEvents],
+            reminders: [...mockReminders],
+            announcements: [...mockAnnouncements],
+            userSettings: { ...defaultSettings },
+            exams: [...mockExams],
+            studentScoreTrend: { ...initialStudentScoreTrend },
+            examTrendData: [...initialExamTrendData],
+            activeClass: defaultSettings.className,
+            dataLoaded: true,
+            supabaseError: null,
+          });
+          return;
+        }
+
+        const [stu, sco, sch, rem, ann] = await Promise.all([
+          supabase.from('students').select('*'),
+          supabase.from('scores').select('*'),
+          supabase.from('schedule_events').select('*'),
+          supabase.from('reminders').select('*'),
+          supabase.from('announcements').select('*').order('date', { ascending: false }),
+        ]);
+
+        const students = (stu.data ?? []).map((r) => rowToStudent(r as AnyRow));
+        const scores = (sco.data ?? []).map((r) => rowToScore(r as AnyRow));
+        const scheduleEvents = (sch.data ?? []).map((r) => rowToSchedule(r as AnyRow));
+        const reminders = (rem.data ?? []).map((r) => rowToReminder(r as AnyRow));
+        const announcements = (ann.data ?? []).map((r) => rowToAnnouncement(r as AnyRow));
+        const userSettings = rowToSettings(settingsRows[0] as AnyRow);
+
+        // 有成绩时由成绩派生 exam/trend；无成绩时退回 mock（保持原演示效果）
+        const derived = scores.length
+          ? deriveExamData(scores)
+          : {
+              exams: [...mockExams],
+              studentScoreTrend: { ...initialStudentScoreTrend },
+              examTrendData: [...initialExamTrendData],
+            };
+
+        set({
+          students: students.length ? students : [...mockStudents],
+          scores,
+          scheduleEvents: scheduleEvents.length ? scheduleEvents : [...initialScheduleEvents],
+          reminders: reminders.length ? reminders : [...mockReminders],
+          announcements: announcements.length ? announcements : [...mockAnnouncements],
+          userSettings,
+          exams: derived.exams,
+          studentScoreTrend: derived.studentScoreTrend,
+          examTrendData: derived.examTrendData,
+          activeClass: userSettings.className || '高一(3)班',
+          dataLoaded: true,
+          supabaseError: null,
+        });
+      } catch (e) {
+        console.error('[supabase] 加载失败，使用本地 mock 数据', e);
+        set({
+          dataLoaded: true,
+          supabaseError: '云端数据加载失败，当前显示本地示例数据，请检查网络后重试。',
+        });
+      } finally {
+        loadPromise = null;
+      }
+    })();
+    return loadPromise;
+  },
+
+  reminders: [...mockReminders],
+  toggleReminder: (id) => {
+    let toggled: Reminder | undefined;
+    set((state) => ({
+      reminders: state.reminders.map((r) => {
+        if (r.id === id) {
+          toggled = { ...r, completed: !r.completed };
+          return toggled;
+        }
+        return r;
+      }),
+    }));
+    if (toggled) upsertReminders([toggled]);
+  },
+  addReminder: (r) => {
+    const newReminder: Reminder = { ...r, id: Date.now().toString() };
+    set((state) => ({ reminders: [...state.reminders, newReminder] }));
+    upsertReminders([newReminder]);
+  },
+  removeReminder: (id) => {
+    set((state) => ({ reminders: state.reminders.filter((r) => r.id !== id) }));
+    deleteReminderRow(id);
+  },
+
+  students: [...mockStudents],
+  addStudent: (s) => {
+    const newStudent: Student = { ...s, id: Date.now().toString() };
+    set((state) => ({ students: [...state.students, newStudent] }));
+    upsertStudents([newStudent]);
+  },
+  updateStudent: (id, updates) => {
+    set((state) => ({
+      students: state.students.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+    }));
+    const updated = get().students.find((s) => s.id === id);
+    if (updated) upsertStudents([updated]);
+  },
+  removeStudent: (id) => {
+    set((state) => ({ students: state.students.filter((s) => s.id !== id) }));
+    deleteStudentRow(id);
+  },
+  importStudents: (students) => {
+    const merged = [
+      ...students,
+      ...get().students.filter(
+        (s) => !students.find((ns) => ns.studentNo === s.studentNo)
+      ),
+    ];
+    set({ students: merged });
+    upsertStudents(students);
+  },
+  updateStudentRanks: (rankings) => {
+    const updated: Student[] = [];
+    set((state) => ({
+      students: state.students.map((s) => {
+        const ranking = rankings.find(
+          (r) => r.studentId === s.id || r.studentNo === s.studentNo
+        );
+        if (ranking) {
+          const next = { ...s, totalScore: ranking.totalScore, rank: ranking.rank };
+          updated.push(next);
+          return next;
+        }
+        return s;
+      }),
+    }));
+    upsertStudents(updated);
+  },
+
+  announcements: [...mockAnnouncements],
+  addAnnouncement: (a) => {
+    const newAnnouncement: Announcement = { ...a, id: Date.now().toString() };
+    set((state) => ({
+      announcements: [newAnnouncement, ...state.announcements],
+    }));
+    upsertAnnouncements([newAnnouncement]);
+  },
+  removeAnnouncement: (id) => {
+    set((state) => ({
+      announcements: state.announcements.filter((a) => a.id !== id),
+    }));
+    deleteAnnouncementRow(id);
+  },
+
+  exams: [...mockExams],
+  scores: [...mockScores],
+  studentScoreTrend: { ...initialStudentScoreTrend },
+  examTrendData: [...initialExamTrendData],
+  importScores: (newScores, newTrend, newExamTrend) => {
+    set((state) => ({
+      scores: [...newScores, ...state.scores],
+      studentScoreTrend: { ...state.studentScoreTrend, ...newTrend },
+      examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
+    }));
+    upsertScores(newScores);
+  },
+  importExamScores: ({ newScores, newTrend, newExamTrend, rankings, examName }) => {
+    let updatedStudents: Student[] = [];
+    set((state) => {
+      const updated = state.students.map((s) => {
+        const ranking = rankings.find(
+          (r) => r.studentId === s.id || r.studentNo === s.studentNo
+        );
+        if (ranking) {
+          const prevTrend = state.studentScoreTrend[s.id];
+          let trend: 'up' | 'down' | 'stable' = 'stable';
+          let trendValue = 0;
+
+          if (prevTrend && prevTrend.length > 0) {
+            const lastExam = prevTrend[prevTrend.length - 1];
+            const prevTotal = Object.entries(lastExam)
+              .filter(([k]) => !['examName', 'date'].includes(k))
+              .reduce((sum, [, v]) => sum + (Number(v) || 0), 0);
+            trendValue = ranking.totalScore - prevTotal;
+            if (trendValue > 0) trend = 'up';
+            else if (trendValue < 0) trend = 'down';
+          }
+
+          const next = {
+            ...s,
+            totalScore: ranking.totalScore,
+            rank: ranking.rank,
+            trend,
+            trendValue,
+          };
+          updatedStudents.push(next);
+          return next;
+        }
+        return s;
+      });
+
+      const existingExamNames = new Set(state.exams.map((e) => e.name));
+      let updatedExams = [...state.exams];
+      if (examName && !existingExamNames.has(examName)) {
+        const subjectAverages: Record<string, number> = {};
+        const subjectCounts: Record<string, number> = {};
+        for (const score of newScores) {
+          if (score.examId === examName) {
+            subjectAverages[score.subject] = (subjectAverages[score.subject] || 0) + score.score;
+            subjectCounts[score.subject] = (subjectCounts[score.subject] || 0) + 1;
+          }
+        }
+        const today = new Date().toISOString().split('T')[0];
+        for (const [subject, total] of Object.entries(subjectAverages)) {
+          const count = subjectCounts[subject] || 1;
+          const avg = Math.round((total / count) * 10) / 10;
+          updatedExams.push({
+            id: `${examName}-${subject}`,
+            name: examName,
+            date: today,
+            subject,
+            classAverage: avg,
+            gradeAverage: avg,
+          });
+        }
+      }
+
+      return {
+        students: updated,
+        exams: updatedExams,
+        scores: [...newScores, ...state.scores],
+        studentScoreTrend: { ...state.studentScoreTrend, ...newTrend },
+        examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
+      };
+    });
+    upsertStudents(updatedStudents);
+    upsertScores(newScores);
+  },
+
+  scheduleEvents: [...initialScheduleEvents],
+  addScheduleEvent: (e) => {
+    const newEvent: ScheduleEvent = { ...e, id: Date.now().toString() };
+    set((state) => ({ scheduleEvents: [...state.scheduleEvents, newEvent] }));
+    upsertSchedule([newEvent]);
+  },
+  removeScheduleEvent: (id) => {
+    set((state) => ({
+      scheduleEvents: state.scheduleEvents.filter((e) => e.id !== id),
+    }));
+    deleteScheduleRow(id);
+  },
+
+  activeClass: '高一(3)班',
+  setActiveClass: (cls) => set({ activeClass: cls }),
+
+  sidebarOpen: false,
+  openSidebar: () => set({ sidebarOpen: true }),
+  closeSidebar: () => set({ sidebarOpen: false }),
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+
+  activePage: 'dashboard',
+  setActivePage: (page: PageKey) => set({ activePage: page }),
+
+  currentExamIndex: 2,
+  setCurrentExamIndex: (idx: number) => set({ currentExamIndex: idx }),
+
+  userSettings: { ...defaultSettings },
+  updateSettings: (s) => {
+    let next: UserSettings | undefined;
+    set((state) => {
+      next = { ...state.userSettings, ...s };
+      return {
+        userSettings: next,
+        activeClass: s.className || state.activeClass,
+      };
+    });
+    if (next) upsertSettings(next);
+  },
+  updateNotification: (key, value) => {
+    let next: UserSettings | undefined;
+    set((state) => {
+      next = {
+        ...state.userSettings,
+        notifications: { ...state.userSettings.notifications, [key]: value },
+      };
+      return { userSettings: next };
+    });
+    if (next) upsertSettings(next);
+  },
+}));
