@@ -536,14 +536,21 @@ export const useStore = create<Store>((set, get) => ({
     deleteStudentRow(id);
   },
   importStudents: (students) => {
+    const existing = get().students;
+    const normalized = students.map((s) => {
+      const match = existing.find((e) => e.studentNo === s.studentNo);
+      return match
+        ? { ...s, id: match.id, className: match.className || s.className }
+        : s;
+    });
     const merged = [
-      ...students,
-      ...get().students.filter(
-        (s) => !students.find((ns) => ns.studentNo === s.studentNo)
+      ...normalized,
+      ...existing.filter(
+        (e) => !normalized.find((ns) => ns.studentNo === e.studentNo)
       ),
     ];
     set({ students: merged });
-    upsertStudents(students);
+    upsertStudents(normalized);
   },
   updateStudentRanks: (rankings) => {
     const updated: Student[] = [];
@@ -583,18 +590,44 @@ export const useStore = create<Store>((set, get) => ({
   studentScoreTrend: { ...initialStudentScoreTrend },
   examTrendData: [...initialExamTrendData],
   importScores: (newScores, newTrend, newExamTrend) => {
+    const existing = get().students;
+    const idByStudentNo = new Map(existing.map((s) => [s.studentNo, s.id]));
+    const mapId = (sid: string) => idByStudentNo.get(sid) || sid;
+    const mappedScores = newScores.map((sc) => ({
+      ...sc,
+      studentId: mapId(sc.studentId),
+    }));
+    const mappedTrend: Record<string, ExamTrendPoint[]> = {};
+    for (const [sid, points] of Object.entries(newTrend)) {
+      mappedTrend[mapId(sid)] = points;
+    }
     set((state) => ({
-      scores: [...newScores, ...state.scores],
-      studentScoreTrend: { ...state.studentScoreTrend, ...newTrend },
+      scores: [...mappedScores, ...state.scores],
+      studentScoreTrend: { ...state.studentScoreTrend, ...mappedTrend },
       examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
     }));
-    upsertScores(newScores);
+    upsertScores(mappedScores);
   },
   importExamScores: ({ newScores, newTrend, newExamTrend, rankings, examName }) => {
     let updatedStudents: Student[] = [];
+    const existing = get().students;
+    const idByStudentNo = new Map(existing.map((s) => [s.studentNo, s.id]));
+    const mapId = (sid: string) => idByStudentNo.get(sid) || sid;
+    const mappedScores = newScores.map((sc) => ({
+      ...sc,
+      studentId: mapId(sc.studentId),
+    }));
+    const mappedTrend: Record<string, ExamTrendPoint[]> = {};
+    for (const [sid, points] of Object.entries(newTrend)) {
+      mappedTrend[mapId(sid)] = points;
+    }
+    const mappedRankings = rankings.map((r) => ({
+      ...r,
+      studentId: mapId(r.studentId),
+    }));
     set((state) => {
       const updated = state.students.map((s) => {
-        const ranking = rankings.find(
+        const ranking = mappedRankings.find(
           (r) => r.studentId === s.id || r.studentNo === s.studentNo
         );
         if (ranking) {
@@ -630,7 +663,7 @@ export const useStore = create<Store>((set, get) => ({
       if (examName && !existingExamNames.has(examName)) {
         const subjectAverages: Record<string, number> = {};
         const subjectCounts: Record<string, number> = {};
-        for (const score of newScores) {
+        for (const score of mappedScores) {
           if (score.examId === examName) {
             subjectAverages[score.subject] = (subjectAverages[score.subject] || 0) + score.score;
             subjectCounts[score.subject] = (subjectCounts[score.subject] || 0) + 1;
@@ -654,13 +687,13 @@ export const useStore = create<Store>((set, get) => ({
       return {
         students: updated,
         exams: updatedExams,
-        scores: [...newScores, ...state.scores],
-        studentScoreTrend: { ...state.studentScoreTrend, ...newTrend },
+        scores: [...mappedScores, ...state.scores],
+        studentScoreTrend: { ...state.studentScoreTrend, ...mappedTrend },
         examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
       };
     });
     upsertStudents(updatedStudents);
-    upsertScores(newScores);
+    upsertScores(mappedScores);
   },
 
   scheduleEvents: [...initialScheduleEvents],
