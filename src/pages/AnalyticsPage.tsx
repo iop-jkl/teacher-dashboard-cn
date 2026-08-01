@@ -98,26 +98,35 @@ export default function AnalyticsPage() {
   }, [scores, examName, examIndex]);
 
   const historyData = useMemo(() => {
-    if (examTrendData.length > 0) {
-      return examTrendData.map((p) => ({
-        name: p.examName,
-        avg:
-          SUBJECTS.reduce((sum, subject) => sum + (Number(p[subject]) || 0), 0) /
-          SUBJECTS.length,
-      }));
+    const examNames = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    if (examNames.length > 0) {
+      return examNames.map((name) => {
+        const totals = new Map<string, number>();
+        for (const s of scores.filter((x) => x.examId === name)) {
+          totals.set(s.studentId, (totals.get(s.studentId) || 0) + s.score);
+        }
+        const avg =
+          totals.size > 0
+            ? [...totals.values()].reduce((sum, total) => sum + total, 0) /
+              totals.size
+            : 0;
+        return { name, avg: Math.round(avg * 10) / 10 };
+      });
     }
     return EXAM_NAMES.map((name, idx) => {
       const data = getClassAverageByExam(idx);
       const avg = data.reduce((sum, d) => sum + d.classAverage, 0) / (data.length || 1);
       return { name, avg };
     });
-  }, [examTrendData]);
+  }, [scores]);
 
   const chartData = useMemo(
     () =>
       historyData.map((h) => ({
         name: h.name,
-        平均分: Math.round(h.avg * 10) / 10,
+        平均总分: Math.round(h.avg * 10) / 10,
       })),
     [historyData]
   );
@@ -245,7 +254,7 @@ export default function AnalyticsPage() {
                           fontSize: '12px',
                         }}
                       />
-                      <Bar dataKey="平均分" radius={[6, 6, 0, 0]}>
+                      <Bar dataKey="平均总分" radius={[6, 6, 0, 0]}>
                         {chartData.map((entry) => (
                           <Cell
                             key={entry.name}
