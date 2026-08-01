@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Upload, Download, AlertCircle, CheckCircle, X, Trophy } from 'lucide-react';
-import { parseExcelFile, generateTemplateExcel, type ImportResult } from '@/utils/excelImport';
+import { Upload, AlertCircle, CheckCircle, X, Trophy } from 'lucide-react';
+import { parseExcelFile, type ImportResult } from '@/utils/excelImport';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 
@@ -72,16 +72,6 @@ export default function ExcelImportButton({
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const blob = generateTemplateExcel();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '班主任工作台-导入模板.xlsx';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleCloseResult = () => {
     setShowResult(false);
     setResult(null);
@@ -107,14 +97,6 @@ export default function ExcelImportButton({
         >
           <Upload className="w-4 h-4" />
           {importing ? '导入中...' : label}
-        </button>
-        <button
-          onClick={handleDownloadTemplate}
-          className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-[#2dd4bf] transition-colors"
-          title="下载导入模板"
-        >
-          <Download className="w-3.5 h-3.5" />
-          模板
         </button>
         <input
           ref={inputRef}
