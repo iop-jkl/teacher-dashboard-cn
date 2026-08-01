@@ -325,6 +325,47 @@ function deriveExamData(scores: Score[]): {
   return { exams, studentScoreTrend: studentTrend, examTrendData };
 }
 
+function assignRanks(entries: { id: string; score: number }[]): Map<string, number> {
+  const sorted = [...entries].sort((a, b) => b.score - a.score);
+  const rankMap = new Map<string, number>();
+  sorted.forEach((entry, idx) => {
+    const rank =
+      idx > 0 && sorted[idx - 1].score === entry.score
+        ? rankMap.get(sorted[idx - 1].id)!
+        : idx + 1;
+    rankMap.set(entry.id, rank);
+  });
+  return rankMap;
+}
+
+function recomputeExamRanks(scores: Score[]): Score[] {
+  const subjectGroups = new Map<string, { id: string; score: number }[]>();
+  for (const s of scores) {
+    if (!subjectGroups.has(s.subject)) subjectGroups.set(s.subject, []);
+    subjectGroups.get(s.subject)!.push({ id: s.studentId, score: s.score });
+  }
+  for (const [subject, entries] of subjectGroups) {
+    const rankMap = assignRanks(entries);
+    for (const s of scores) {
+      if (s.subject === subject) {
+        s.subjectRank = rankMap.get(s.studentId) ?? 0;
+      }
+    }
+  }
+
+  const totals = new Map<string, number>();
+  for (const s of scores) {
+    totals.set(s.studentId, (totals.get(s.studentId) || 0) + s.score);
+  }
+  const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  const rankById = new Map<string, number>();
+  sorted.forEach(([id], idx) => rankById.set(id, idx + 1));
+  for (const s of scores) {
+    s.classRank = rankById.get(s.studentId) ?? 0;
+  }
+  return scores;
+}
+
 // ============================================================
 // 首次初始化：把 mock 基线写入 Supabase
 // ============================================================
@@ -375,6 +416,11 @@ interface Store {
     newScores: Score[],
     newTrend: Record<string, ExamTrendPoint[]>,
     newExamTrend: ExamTrendPoint[]
+  ) => void;
+  updateExamScores: (
+    studentId: string,
+    examId: string,
+    updates: { subject: string; score: number }[]
   ) => void;
   importExamScores: (params: {
     newScores: Score[];
@@ -617,6 +663,47 @@ export const useStore = create<Store>((set, get) => ({
       examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
     }));
     upsertScores(mappedScores);
+  },
+  updateExamScores: (studentId, examId, updates) => {
+    let updatedScores: Score[] = [];
+    let updatedStudents: Student[] = [];
+    set((state) => {
+      const nextScores = recomputeExamRanks(
+        state.scores.map((s) => {
+          if (s.studentId !== studentId || s.examId !== examId) return s;
+          const update = updates.find((u) => u.subject === s.subject);
+          return update ? { ...s, score: update.score } : s;
+        })
+      );
+      const derived = deriveExamData(nextScores);
+      const examIds = [...new Set(nextScores.map((s) => s.examId))].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      const latestExamId = examIds[examIds.length - 1] || '';
+      const totals = new Map<string, number>();
+      for (const s of nextScores) {
+        if (!latestExamId || s.examId !== latestExamId) continue;
+        totals.set(s.studentId, (totals.get(s.studentId) || 0) + s.score);
+      }
+      const sortedStudents = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+      const rankById = new Map<string, number>();
+      sortedStudents.forEach(([id], idx) => rankById.set(id, idx + 1));
+      updatedStudents = state.students.map((st) => {
+        const total = totals.get(st.id);
+        if (total === undefined) return st;
+        return { ...st, totalScore: total, rank: rankById.get(st.id) || 0 };
+      });
+      updatedScores = nextScores.filter((s) => s.examId === examId);
+      return {
+        scores: nextScores,
+        students: updatedStudents,
+        exams: derived.exams,
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
+      };
+    });
+    if (updatedScores.length > 0) upsertScores(updatedScores);
+    if (updatedStudents.length > 0) upsertStudents(updatedStudents);
   },
   importExamScores: ({ newScores, newTrend, newExamTrend, rankings, examName }) => {
     let updatedStudents: Student[] = [];

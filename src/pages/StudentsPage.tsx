@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
@@ -13,7 +13,7 @@ import type { Student } from '@/types';
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'];
 
 export default function StudentsPage() {
-  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, updateStudent, activeClass } = useStore();
+  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, updateStudent, addStudent, updateExamScores, activeClass } = useStore();
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
 
@@ -21,6 +21,11 @@ export default function StudentsPage() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedExam, setSelectedExam] = useState('');
   const [remarkDraft, setRemarkDraft] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addStudentNo, setAddStudentNo] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [scoreDrafts, setScoreDrafts] = useState<Record<string, number>>({});
 
   const filteredStudents = useMemo(() => {
     let result = students;
@@ -77,13 +82,46 @@ export default function StudentsPage() {
   const hasPrev = studentExams.indexOf(selectedExam) > 0;
   const totalDiff = hasPrev ? selectedTotal - prevTotal : 0;
 
+  useEffect(() => {
+    if (!selectedStudent || !selectedExam) return;
+    const drafts: Record<string, number> = {};
+    for (const s of scores.filter(
+      (x) => x.studentId === selectedStudent.id && x.examId === selectedExam
+    )) {
+      drafts[s.subject] = s.score;
+    }
+    setScoreDrafts(drafts);
+    setEditMode(false);
+  }, [selectedStudent?.id, selectedExam, scores]);
+
   const handleDeleteStudent = (id: string) => {
     removeStudent(id);
     showToast('学生已删除', 'info');
   };
 
   const handleAddStudent = () => {
-    showToast('添加学生功能：请通过 Excel 导入', 'info');
+    setAddName('');
+    setAddStudentNo('');
+    setShowAddModal(true);
+  };
+
+  const handleSaveAddStudent = () => {
+    if (!addName.trim() || !addStudentNo.trim()) {
+      showToast('请填写姓名和学号', 'info');
+      return;
+    }
+    addStudent({
+      name: addName.trim(),
+      studentNo: addStudentNo.trim(),
+      className: activeClass,
+      avatar: '',
+      totalScore: 0,
+      rank: 0,
+      trend: 'stable',
+      trendValue: 0,
+    });
+    setShowAddModal(false);
+    showToast('学生已添加', 'success');
   };
 
   const handleOpenStudent = (student: Student) => {
@@ -101,6 +139,18 @@ export default function StudentsPage() {
       setSelectedStudent({ ...selectedStudent, remark: remarkDraft });
       showToast('备注已保存', 'success');
     }
+  };
+
+  const handleSaveScores = () => {
+    if (!selectedStudent || !selectedExam) return;
+    const updates = SUBJECTS.map((subject) => ({
+      subject,
+      score: scoreDrafts[subject],
+    })).filter((u) => typeof u.score === 'number' && !Number.isNaN(u.score));
+    if (updates.length === 0) return;
+    updateExamScores(selectedStudent.id, selectedExam, updates);
+    showToast('成绩已保存并重新排名', 'success');
+    setEditMode(false);
   };
 
   return (
@@ -333,7 +383,33 @@ export default function StudentsPage() {
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-medium text-gray-900 mb-3">各科成绩</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-900">各科成绩</h4>
+                      {selectedExamScores.length > 0 &&
+                        (editMode ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setEditMode(false)}
+                              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                              取消
+                            </button>
+                            <button
+                              onClick={handleSaveScores}
+                              className="px-3 py-1.5 bg-[#2dd4bf] text-white text-xs rounded-lg hover:bg-[#14b8a6] transition-colors"
+                            >
+                              保存成绩
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditMode(true)}
+                            className="px-3 py-1.5 bg-[#2dd4bf]/10 text-[#2dd4bf] text-xs rounded-lg hover:bg-[#2dd4bf]/20 transition-colors"
+                          >
+                            编辑成绩
+                          </button>
+                        ))}
+                    </div>
                     <div className="space-y-2">
                       {SUBJECTS.map((subject) => {
                         const current = selectedExamScores.find((s) => s.subject === subject);
@@ -362,7 +438,21 @@ export default function StudentsPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-xs text-gray-400">满分 {fullScore}</span>
-                              <span className="text-sm font-medium text-gray-900">{current.score} 分</span>
+                              {editMode ? (
+                                <input
+                                  type="number"
+                                  value={scoreDrafts[subject] ?? current.score}
+                                  onChange={(e) =>
+                                    setScoreDrafts((prev) => ({
+                                      ...prev,
+                                      [subject]: Number(e.target.value),
+                                    }))
+                                  }
+                                  className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:border-[#2dd4bf]/50"
+                                />
+                              ) : (
+                                <span className="text-sm font-medium text-gray-900">{current.score} 分</span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                                 rate >= 85 ? 'bg-emerald-50 text-emerald-600' :
                                 rate >= 60 ? 'bg-amber-50 text-amber-600' :
@@ -425,6 +515,74 @@ export default function StudentsPage() {
               >
                 关闭
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">添加学生</h3>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="p-1 rounded hover:bg-gray-100"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">姓名</label>
+                <input
+                  type="text"
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="请输入学生姓名"
+                  autoFocus
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">学号</label>
+                <input
+                  type="text"
+                  value={addStudentNo}
+                  onChange={(e) => setAddStudentNo(e.target.value)}
+                  placeholder="请输入学号"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">班级</label>
+                <input
+                  type="text"
+                  value={activeClass}
+                  readOnly
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveAddStudent}
+                  className="flex-1 px-4 py-2 rounded-lg bg-[#2dd4bf] text-white text-sm hover:bg-[#14b8a6] transition-colors"
+                >
+                  保存
+                </button>
+              </div>
             </div>
           </div>
         </div>
