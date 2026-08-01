@@ -10,9 +10,15 @@ interface StudentTableProps {
   students: Student[];
   scores?: Score[];
   examId?: string;
+  className?: string;
 }
 
-export default function StudentTable({ students, scores = [], examId }: StudentTableProps) {
+export default function StudentTable({
+  students,
+  scores = [],
+  examId,
+  className = '高一(3)班',
+}: StudentTableProps) {
   const navigate = useNavigate();
   const [sortKey, setSortKey] = useState('总分');
 
@@ -50,7 +56,7 @@ export default function StudentTable({ students, scores = [], examId }: StudentT
         <div>
           <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            高一(3)班 · 共 {students.length} 名学生{activeExamId ? ` · ${activeExamId}` : ''}
+            {className} · 共 {students.length} 名学生{activeExamId ? ` · ${activeExamId}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-3">

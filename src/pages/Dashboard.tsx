@@ -391,7 +391,7 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
             <ExcelImportButton label="导入Excel数据" />
           </div>
-          <StudentTable students={students} scores={scores} />
+          <StudentTable students={students} scores={scores} className={activeClass} />
         </div>
       </main>
 

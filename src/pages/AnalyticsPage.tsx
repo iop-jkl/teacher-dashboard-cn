@@ -1,5 +1,15 @@
 import { useState, useMemo } from 'react';
 import { TrendingUp, Award, Menu } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
@@ -48,6 +58,7 @@ export default function AnalyticsPage() {
     closeSidebar,
     students,
     scores,
+    activeClass,
     currentExamIndex,
     setCurrentExamIndex,
     studentScoreTrend,
@@ -102,8 +113,12 @@ export default function AnalyticsPage() {
     });
   }, [examTrendData]);
 
-  const maxHistoryAvg = useMemo(
-    () => Math.max(...historyData.map((h) => h.avg), 1),
+  const chartData = useMemo(
+    () =>
+      historyData.map((h) => ({
+        name: h.name,
+        平均分: Math.round(h.avg * 10) / 10,
+      })),
     [historyData]
   );
 
@@ -206,27 +221,42 @@ export default function AnalyticsPage() {
           {activeView === 'trend' && (
             <>
               <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-gray-900 mb-4">班级均分历史</h3>
-                <div className="h-64 flex items-end justify-between gap-2 px-2">
-                  {historyData.map((h, idx) => {
-                    const isCurrent = historyData.findIndex((x) => x.name === examName) === idx;
-                    const heightPercent = Math.max((h.avg / maxHistoryAvg) * 100, 3);
-                    return (
-                      <div key={`${h.name}-${idx}`} className="flex-1 flex flex-col items-center gap-2">
-                        <div className="text-xs text-gray-500 font-medium">{h.avg.toFixed(0)}</div>
-                        <div
-                          onClick={() => handleExamChange(h.name)}
-                          className={`w-full rounded-t-lg transition-all cursor-pointer ${
-                            isCurrent
-                              ? 'bg-gradient-to-t from-[#2dd4bf] to-[#5eead4]'
-                              : 'bg-gradient-to-t from-gray-200 to-gray-100'
-                          }`}
-                          style={{ height: `${heightPercent}%` }}
-                        />
-                        <div className="text-xs text-gray-500">{h.name}</div>
-                      </div>
-                    );
-                  })}
+                <h3 className="text-base font-semibold text-gray-900 mb-4">班级平均分</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 12, fill: '#94a3b8' }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12, fill: '#94a3b8' }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Bar dataKey="平均分" radius={[6, 6, 0, 0]}>
+                        {chartData.map((entry) => (
+                          <Cell
+                            key={entry.name}
+                            fill={entry.name === examName ? '#2dd4bf' : '#cbd5e1'}
+                            cursor="pointer"
+                            onClick={() => handleExamChange(entry.name)}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
                 {historyData.length === 0 && (
                   <div className="py-10 text-center text-sm text-gray-400">暂无考试数据</div>
@@ -281,7 +311,7 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              <StudentTable students={students} scores={scores} examId={examName} />
+              <StudentTable students={students} scores={scores} examId={examName} className={activeClass} />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">

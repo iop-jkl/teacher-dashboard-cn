@@ -13,7 +13,7 @@ import type { Student } from '@/types';
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'];
 
 export default function StudentsPage() {
-  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, updateStudent } = useStore();
+  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, updateStudent, activeClass } = useStore();
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
 
@@ -120,7 +120,7 @@ export default function StudentsPage() {
               </button>
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">学生管理</h2>
-                <p className="text-xs text-gray-500 mt-0.5">高一(3)班 · 共 {students.length} 名学生</p>
+                <p className="text-xs text-gray-500 mt-0.5">{activeClass} · 共 {students.length} 名学生</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -251,7 +251,7 @@ export default function StudentsPage() {
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">{selectedStudent.name}</h3>
                   <p className="text-xs text-gray-500">
-                    {selectedStudent.studentNo} · {selectedStudent.className}
+                    {selectedStudent.studentNo} · {activeClass}
                   </p>
                 </div>
               </div>

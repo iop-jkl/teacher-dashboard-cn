@@ -451,12 +451,19 @@ export const useStore = create<Store>((set, get) => ({
           supabase.from('announcements').select('*').order('date', { ascending: false }),
         ]);
 
-        const students = (stu.data ?? []).map((r) => rowToStudent(r as AnyRow));
+        const rawStudents = (stu.data ?? []).map((r) => rowToStudent(r as AnyRow));
         const scores = (sco.data ?? []).map((r) => rowToScore(r as AnyRow));
         const scheduleEvents = (sch.data ?? []).map((r) => rowToSchedule(r as AnyRow));
         const reminders = (rem.data ?? []).map((r) => rowToReminder(r as AnyRow));
         const announcements = (ann.data ?? []).map((r) => rowToAnnouncement(r as AnyRow));
         const userSettings = rowToSettings(settingsRows[0] as AnyRow);
+        const normalizedStudents = rawStudents.map((s) => ({
+          ...s,
+          className: userSettings.className,
+        }));
+        const studentsNeedSync =
+          rawStudents.length > 0 &&
+          normalizedStudents.some((s, i) => s.className !== rawStudents[i].className);
 
         // 有成绩时由成绩派生 exam/trend；无成绩时退回 mock（保持原演示效果）
         const derived = scores.length
@@ -468,7 +475,7 @@ export const useStore = create<Store>((set, get) => ({
             };
 
         set({
-          students: students.length ? students : [...mockStudents],
+          students: normalizedStudents.length ? normalizedStudents : [...mockStudents],
           scores,
           scheduleEvents: scheduleEvents.length ? scheduleEvents : [...initialScheduleEvents],
           reminders: reminders.length ? reminders : [...mockReminders],
@@ -481,6 +488,9 @@ export const useStore = create<Store>((set, get) => ({
           dataLoaded: true,
           supabaseError: null,
         });
+        if (studentsNeedSync) {
+          void upsertStudents(normalizedStudents);
+        }
       } catch (e) {
         console.error('[supabase] 加载失败，使用本地 mock 数据', e);
         set({
@@ -726,14 +736,27 @@ export const useStore = create<Store>((set, get) => ({
   userSettings: { ...defaultSettings },
   updateSettings: (s) => {
     let next: UserSettings | undefined;
+    let updatedStudents: Student[] = [];
     set((state) => {
       next = { ...state.userSettings, ...s };
+      if (s.className && s.className !== state.userSettings.className) {
+        updatedStudents = state.students.map((st) => ({
+          ...st,
+          className: s.className as string,
+        }));
+        return {
+          userSettings: next,
+          activeClass: s.className,
+          students: updatedStudents,
+        };
+      }
       return {
         userSettings: next,
         activeClass: s.className || state.activeClass,
       };
     });
     if (next) upsertSettings(next);
+    if (updatedStudents.length > 0) upsertStudents(updatedStudents);
   },
   updateNotification: (key, value) => {
     let next: UserSettings | undefined;
