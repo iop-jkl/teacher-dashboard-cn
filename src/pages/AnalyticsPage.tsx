@@ -102,6 +102,11 @@ export default function AnalyticsPage() {
     });
   }, [examTrendData]);
 
+  const maxHistoryAvg = useMemo(
+    () => Math.max(...historyData.map((h) => h.avg), 1),
+    [historyData]
+  );
+
   const progressRankings = useMemo(() => {
     return students
       .map((student) => {
@@ -205,12 +210,13 @@ export default function AnalyticsPage() {
                 <div className="h-64 flex items-end justify-between gap-2 px-2">
                   {historyData.map((h, idx) => {
                     const isCurrent = historyData.findIndex((x) => x.name === examName) === idx;
-                    const heightPercent = Math.max((h.avg / 580) * 100, 2);
+                    const heightPercent = Math.max((h.avg / maxHistoryAvg) * 100, 3);
                     return (
                       <div key={`${h.name}-${idx}`} className="flex-1 flex flex-col items-center gap-2">
                         <div className="text-xs text-gray-500 font-medium">{h.avg.toFixed(0)}</div>
                         <div
-                          className={`w-full rounded-t-lg transition-all ${
+                          onClick={() => handleExamChange(h.name)}
+                          className={`w-full rounded-t-lg transition-all cursor-pointer ${
                             isCurrent
                               ? 'bg-gradient-to-t from-[#2dd4bf] to-[#5eead4]'
                               : 'bg-gradient-to-t from-gray-200 to-gray-100'
@@ -222,6 +228,9 @@ export default function AnalyticsPage() {
                     );
                   })}
                 </div>
+                {historyData.length === 0 && (
+                  <div className="py-10 text-center text-sm text-gray-400">暂无考试数据</div>
+                )}
               </div>
 
               <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
