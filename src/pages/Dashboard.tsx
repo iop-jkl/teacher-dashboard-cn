@@ -11,13 +11,12 @@ import QuickActions from '@/components/QuickActions';
 import AddReminderModal from '@/components/AddReminderModal';
 import StudentProgressBoard from '@/components/StudentProgressBoard';
 import ExcelImportButton from '@/components/ExcelImportButton';
+import ExcelExportButton from '@/components/ExcelExportButton';
 import ToastContainer from '@/components/ToastContainer';
 import { useStore } from '@/store/useStore';
 import { useToastStore } from '@/store/useToast';
 import {
   SUBJECTS,
-  EXAM_NAMES,
-  getClassAverageByExam,
 } from '@/data/mockData';
 import type { ExamTrendPoint } from '@/types';
 
@@ -39,7 +38,7 @@ export default function Dashboard() {
     students,
     scores,
     studentScoreTrend,
-    examTrendData,
+    examList,
   } = useStore();
 
   const showToast = useToastStore((s) => s.showToast);
@@ -49,15 +48,6 @@ export default function Dashboard() {
 
   const completedCount = reminders.filter((r) => r.completed).length;
   const pendingCount = reminders.length - completedCount;
-
-  const examList = useMemo(() => {
-    const names = [...new Set(examTrendData.map((p) => p.examName).filter(Boolean))];
-    if (names.length > 0) return names;
-    const fromScores = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
-      a.localeCompare(b)
-    );
-    return fromScores.length > 0 ? fromScores : [...EXAM_NAMES];
-  }, [examTrendData, scores]);
 
   const clampedExamIndex = Math.min(Math.max(currentExamIndex, 0), examList.length - 1);
   const latestExamName = examList[clampedExamIndex] || '暂无考试';
@@ -80,8 +70,8 @@ export default function Dashboard() {
       }
       return result;
     }
-    return getClassAverageByExam(clampedExamIndex);
-  }, [scores, latestExamName, clampedExamIndex]);
+    return [];
+  }, [scores, latestExamName]);
 
   const prevExamAverageData = useMemo(() => {
     if (!prevExamName) return [];
@@ -100,8 +90,8 @@ export default function Dashboard() {
       }
       return result;
     }
-    return getClassAverageByExam(clampedExamIndex - 1);
-  }, [scores, prevExamName, clampedExamIndex]);
+    return [];
+  }, [scores, prevExamName]);
 
   const progressRankings = useMemo(() => {
     return students
@@ -386,7 +376,10 @@ export default function Dashboard() {
 
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
-            <ExcelImportButton label="导入Excel数据" />
+            <div className="flex items-center gap-2">
+              <ExcelExportButton />
+              <ExcelImportButton label="导入Excel数据" />
+            </div>
           </div>
           <StudentTable students={students} scores={scores} className={activeClass} />
         </div>

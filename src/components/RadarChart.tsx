@@ -7,7 +7,8 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts';
-import { SUBJECTS, studentScoreTrend } from '@/data/mockData';
+import { SUBJECTS } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
 
 interface StudentRadarProps {
   studentId: string;
@@ -15,6 +16,7 @@ interface StudentRadarProps {
 }
 
 export default function StudentRadar({ studentId, examIndex = 2 }: StudentRadarProps) {
+  const studentScoreTrend = useStore((s) => s.studentScoreTrend);
   const trendData = studentScoreTrend[studentId];
   if (!trendData) return null;
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, User, LogOut } from 'lucide-react';
+import { Save, User, LogOut, CalendarPlus, Trash2 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
@@ -15,6 +15,10 @@ export default function SettingsPage() {
     closeSidebar,
     userSettings: storeSettings,
     updateSettings,
+    examList,
+    addExam,
+    removeExam,
+    updateExamDate,
   } = useStore();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
@@ -22,6 +26,10 @@ export default function SettingsPage() {
 
   const [localSettings, setLocalSettings] = useState(storeSettings);
   const [saved, setSaved] = useState(false);
+  const [newExamName, setNewExamName] = useState('');
+  const [newExamDate, setNewExamDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
   const initialSettings = useRef(storeSettings);
 
   useEffect(() => {
@@ -53,6 +61,26 @@ export default function SettingsPage() {
     logout();
     showToast('已退出登录', 'info');
     navigate('/login');
+  };
+
+  const handleAddExam = () => {
+    if (!newExamName.trim()) {
+      showToast('请输入考试名称', 'info');
+      return;
+    }
+    if (examList.includes(newExamName.trim())) {
+      showToast('考试已存在', 'info');
+      return;
+    }
+    addExam(newExamName.trim(), newExamDate);
+    setNewExamName('');
+    showToast('考试已添加', 'success');
+  };
+
+  const handleRemoveExam = (name: string) => {
+    if (!window.confirm(`确认删除考试“${name}”及其全部成绩？`)) return;
+    removeExam(name);
+    showToast('考试已删除', 'success');
   };
 
   return (
@@ -120,6 +148,69 @@ export default function SettingsPage() {
                   placeholder="请输入职务"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center">
+                <CalendarPlus className="w-5 h-5 text-teal-600" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">考试管理</h3>
+            </div>
+
+            <div className="space-y-3">
+              {examList.map((name) => (
+                <div
+                  key={name}
+                  className="flex items-center gap-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2"
+                >
+                  <div className="flex-1 min-w-[120px]">
+                    <p className="text-sm font-medium text-gray-800">{name}</p>
+                  </div>
+                  <input
+                    type="date"
+                    value={storeSettings.examDates[name] || ''}
+                    onChange={(e) => updateExamDate(name, e.target.value)}
+                    className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2dd4bf]/40"
+                  />
+                  <button
+                    onClick={() => handleRemoveExam(name)}
+                    className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                    aria-label={`删除${name}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {examList.length === 0 && (
+                <div className="py-6 text-center text-sm text-gray-400">
+                  暂无考试，请先添加
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+              <input
+                type="text"
+                value={newExamName}
+                onChange={(e) => setNewExamName(e.target.value)}
+                placeholder="考试名称，如：期末考"
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+              />
+              <input
+                type="date"
+                value={newExamDate}
+                onChange={(e) => setNewExamDate(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+              />
+              <button
+                onClick={handleAddExam}
+                className="flex items-center justify-center gap-1 px-4 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
+              >
+                <CalendarPlus className="w-4 h-4" />
+                添加考试
+              </button>
             </div>
           </div>
 

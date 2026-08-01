@@ -39,6 +39,7 @@ export interface UserSettings {
   teacherName: string;
   className: string;
   position: string;
+  examDates: Record<string, string>;
   notifications: {
     examReminder: boolean;
     homeworkReminder: boolean;
@@ -51,6 +52,7 @@ const defaultSettings: UserSettings = {
   teacherName: '俞老师',
   className: '高一(7)班',
   position: '班主任',
+  examDates: {},
   notifications: {
     examReminder: true,
     homeworkReminder: true,
@@ -180,20 +182,32 @@ function settingsToRow(s: UserSettings): AnyRow {
     teacher_name: s.teacherName,
     class_name: s.className,
     position: s.position,
-    notifications: s.notifications,
+    notifications: {
+      ...s.notifications,
+      examDates: s.examDates,
+    },
   };
 }
 function rowToSettings(r: AnyRow): UserSettings {
-  const n = (r.notifications ?? {}) as Partial<UserSettings['notifications']>;
+  const n = (r.notifications ?? {}) as Record<string, unknown>;
   return {
     teacherName: String(r.teacher_name ?? defaultSettings.teacherName),
     className: String(r.class_name ?? defaultSettings.className),
     position: String(r.position ?? defaultSettings.position),
+    examDates: (n.examDates as Record<string, string>) ?? {},
     notifications: {
-      examReminder: n.examReminder ?? defaultSettings.notifications.examReminder,
-      homeworkReminder: n.homeworkReminder ?? defaultSettings.notifications.homeworkReminder,
-      declineAlert: n.declineAlert ?? defaultSettings.notifications.declineAlert,
-      parentNotification: n.parentNotification ?? defaultSettings.notifications.parentNotification,
+      examReminder: Boolean(
+        n.examReminder ?? defaultSettings.notifications.examReminder
+      ),
+      homeworkReminder: Boolean(
+        n.homeworkReminder ?? defaultSettings.notifications.homeworkReminder
+      ),
+      declineAlert: Boolean(
+        n.declineAlert ?? defaultSettings.notifications.declineAlert
+      ),
+      parentNotification: Boolean(
+        n.parentNotification ?? defaultSettings.notifications.parentNotification
+      ),
     },
   };
 }
@@ -260,10 +274,50 @@ async function deleteAnnouncementRow(id: string) {
   const { error } = await supabase.from('announcements').delete().eq('id', id);
   if (error) console.error('[supabase] delete announcement failed:', error.message);
 }
+async function deleteScoresByExam(examId: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('scores').delete().eq('exam_id', examId);
+  if (error) console.error('[supabase] delete scores by exam failed:', error.message);
+}
+async function deleteStudentRows(ids: string[]) {
+  if (!supabase || ids.length === 0) return;
+  const { error } = await supabase.from('students').delete().in('id', ids);
+  if (error) console.error('[supabase] delete students failed:', error.message);
+}
+async function deleteScoresByStudents(ids: string[]) {
+  if (!supabase || ids.length === 0) return;
+  const { error } = await supabase.from('scores').delete().in('student_id', ids);
+  if (error) console.error('[supabase] delete scores by students failed:', error.message);
+}
 async function upsertSettings(s: UserSettings) {
   if (!supabase) return;
   const { error } = await supabase.from('user_settings').upsert(settingsToRow(s));
   if (error) console.error('[supabase] upsert settings failed:', error.message);
+}
+
+function buildExamList(
+  scores: Score[],
+  examDates: Record<string, string>
+): string[] {
+  const names = new Set<string>([
+    ...Object.keys(examDates),
+    ...scores.map((s) => s.examId),
+  ]);
+  return [...names].sort((a, b) => {
+    const dateA = examDates[a] || '';
+    const dateB = examDates[b] || '';
+    return dateA.localeCompare(dateB) || a.localeCompare(b);
+  });
+}
+
+function applyExamDates(
+  exams: Exam[],
+  examDates: Record<string, string>
+): Exam[] {
+  return exams.map((e) => ({
+    ...e,
+    date: examDates[e.name] || e.date,
+  }));
 }
 
 // ============================================================
@@ -392,6 +446,11 @@ interface Store {
   supabaseError: string | null;
   loadFromSupabase: () => Promise<void>;
 
+  examList: string[];
+  addExam: (name: string, date: string) => void;
+  removeExam: (name: string) => void;
+  updateExamDate: (name: string, date: string) => void;
+
   reminders: Reminder[];
   toggleReminder: (id: string) => void;
   addReminder: (r: Omit<Reminder, 'id'>) => void;
@@ -399,6 +458,7 @@ interface Store {
 
   students: Student[];
   addStudent: (s: Omit<Student, 'id'>) => void;
+  removeStudents: (ids: string[]) => void;
   updateStudent: (id: string, updates: Partial<Student>) => void;
   removeStudent: (id: string) => void;
   importStudents: (students: Student[]) => void;
@@ -421,6 +481,9 @@ interface Store {
     studentId: string,
     examId: string,
     updates: { subject: string; score: number }[]
+  ) => void;
+  batchUpdateScores: (
+    updates: { studentId: string; examId: string; subject: string; score: number }[]
   ) => void;
   importExamScores: (params: {
     newScores: Score[];
@@ -456,6 +519,47 @@ interface Store {
 export const useStore = create<Store>((set, get) => ({
   dataLoaded: false,
   supabaseError: null,
+  examList: [],
+  addExam: (name, date) => {
+    set((state) => {
+      const examDates = { ...state.userSettings.examDates, [name]: date };
+      return {
+        userSettings: { ...state.userSettings, examDates },
+        examList: buildExamList(state.scores, examDates),
+      };
+    });
+    upsertSettings(get().userSettings);
+  },
+  removeExam: (name) => {
+    deleteScoresByExam(name);
+    set((state) => {
+      const examDates = { ...state.userSettings.examDates };
+      delete examDates[name];
+      const nextScores = state.scores.filter((s) => s.examId !== name);
+      const derived = nextScores.length
+        ? deriveExamData(nextScores)
+        : { exams: [], studentScoreTrend: {}, examTrendData: [] };
+      return {
+        scores: nextScores,
+        userSettings: { ...state.userSettings, examDates },
+        exams: applyExamDates(derived.exams, state.userSettings.examDates),
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
+        examList: buildExamList(nextScores, examDates),
+      };
+    });
+    upsertSettings(get().userSettings);
+  },
+  updateExamDate: (name, date) => {
+    set((state) => {
+      const examDates = { ...state.userSettings.examDates, [name]: date };
+      return {
+        userSettings: { ...state.userSettings, examDates },
+        examList: buildExamList(state.scores, examDates),
+      };
+    });
+    upsertSettings(get().userSettings);
+  },
   loadFromSupabase: async () => {
     if (loadPromise) return loadPromise;
     if (!isSupabaseConfigured || !supabase) {
@@ -482,6 +586,7 @@ export const useStore = create<Store>((set, get) => ({
             exams: [...mockExams],
             studentScoreTrend: { ...initialStudentScoreTrend },
             examTrendData: [...initialExamTrendData],
+            examList: buildExamList(mockScores, defaultSettings.examDates),
             activeClass: defaultSettings.className,
             dataLoaded: true,
             supabaseError: null,
@@ -514,22 +619,24 @@ export const useStore = create<Store>((set, get) => ({
         // 有成绩时由成绩派生 exam/trend；无成绩时退回 mock（保持原演示效果）
         const derived = scores.length
           ? deriveExamData(scores)
-          : {
-              exams: [...mockExams],
-              studentScoreTrend: { ...initialStudentScoreTrend },
-              examTrendData: [...initialExamTrendData],
-            };
+          : { exams: [], studentScoreTrend: {}, examTrendData: [] };
+        const derivedExams = derived.exams.map((e) => ({
+          ...e,
+          date: userSettings.examDates[e.name] || e.date,
+        }));
+        const examList = buildExamList(scores, userSettings.examDates);
 
         set({
-          students: normalizedStudents.length ? normalizedStudents : [...mockStudents],
+          students: normalizedStudents.length ? normalizedStudents : [],
           scores,
-          scheduleEvents: scheduleEvents.length ? scheduleEvents : [...initialScheduleEvents],
+          scheduleEvents: scheduleEvents.length ? scheduleEvents : [],
           reminders: reminders.length ? reminders : [],
-          announcements: announcements.length ? announcements : [...mockAnnouncements],
+          announcements: announcements.length ? announcements : [],
           userSettings,
-          exams: derived.exams,
+          exams: derivedExams,
           studentScoreTrend: derived.studentScoreTrend,
           examTrendData: derived.examTrendData,
+          examList,
           activeClass: userSettings.className || '高一(3)班',
           dataLoaded: true,
           supabaseError: null,
@@ -588,8 +695,42 @@ export const useStore = create<Store>((set, get) => ({
     if (updated) upsertStudents([updated]);
   },
   removeStudent: (id) => {
-    set((state) => ({ students: state.students.filter((s) => s.id !== id) }));
     deleteStudentRow(id);
+    deleteScoresByStudents([id]);
+    set((state) => {
+      const nextScores = state.scores.filter((s) => s.studentId !== id);
+      const derived = nextScores.length
+        ? deriveExamData(nextScores)
+        : { exams: [], studentScoreTrend: {}, examTrendData: [] };
+      return {
+        students: state.students.filter((s) => s.id !== id),
+        scores: nextScores,
+        exams: derived.exams,
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
+        examList: buildExamList(nextScores, state.userSettings.examDates),
+      };
+    });
+  },
+  removeStudents: (ids) => {
+    if (ids.length === 0) return;
+    deleteStudentRows(ids);
+    deleteScoresByStudents(ids);
+    set((state) => {
+      const nextStudents = state.students.filter((s) => !ids.includes(s.id));
+      const nextScores = state.scores.filter((s) => !ids.includes(s.studentId));
+      const derived = nextScores.length
+        ? deriveExamData(nextScores)
+        : { exams: [], studentScoreTrend: {}, examTrendData: [] };
+      return {
+        students: nextStudents,
+        scores: nextScores,
+        exams: applyExamDates(derived.exams, state.userSettings.examDates),
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
+        examList: buildExamList(nextScores, state.userSettings.examDates),
+      };
+    });
   },
   importStudents: (students) => {
     const existing = get().students;
@@ -661,6 +802,10 @@ export const useStore = create<Store>((set, get) => ({
       scores: [...mappedScores, ...state.scores],
       studentScoreTrend: { ...state.studentScoreTrend, ...mappedTrend },
       examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
+      examList: buildExamList(
+        [...mappedScores, ...state.scores],
+        state.userSettings.examDates
+      ),
     }));
     upsertScores(mappedScores);
   },
@@ -676,10 +821,8 @@ export const useStore = create<Store>((set, get) => ({
         })
       );
       const derived = deriveExamData(nextScores);
-      const examIds = [...new Set(nextScores.map((s) => s.examId))].sort((a, b) =>
-        a.localeCompare(b)
-      );
-      const latestExamId = examIds[examIds.length - 1] || '';
+      const examOrder = buildExamList(nextScores, state.userSettings.examDates);
+      const latestExamId = examOrder[examOrder.length - 1] || '';
       const totals = new Map<string, number>();
       for (const s of nextScores) {
         if (!latestExamId || s.examId !== latestExamId) continue;
@@ -700,6 +843,50 @@ export const useStore = create<Store>((set, get) => ({
         exams: derived.exams,
         studentScoreTrend: derived.studentScoreTrend,
         examTrendData: derived.examTrendData,
+        examList: buildExamList(nextScores, state.userSettings.examDates),
+      };
+    });
+    if (updatedScores.length > 0) upsertScores(updatedScores);
+    if (updatedStudents.length > 0) upsertStudents(updatedStudents);
+  },
+  batchUpdateScores: (updates) => {
+    let updatedScores: Score[] = [];
+    let updatedStudents: Student[] = [];
+    set((state) => {
+      const updateMap = new Map(
+        updates.map((u) => [`${u.studentId}|${u.examId}|${u.subject}`, u.score])
+      );
+      const nextScores = recomputeExamRanks(
+        state.scores.map((s) => {
+          const score = updateMap.get(`${s.studentId}|${s.examId}|${s.subject}`);
+          return score === undefined ? s : { ...s, score };
+        })
+      );
+      const derived = deriveExamData(nextScores);
+      const examOrder = buildExamList(nextScores, state.userSettings.examDates);
+      const latestExamId = examOrder[examOrder.length - 1] || '';
+      const totals = new Map<string, number>();
+      for (const s of nextScores) {
+        if (!latestExamId || s.examId !== latestExamId) continue;
+        totals.set(s.studentId, (totals.get(s.studentId) || 0) + s.score);
+      }
+      const sortedStudents = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+      const rankById = new Map<string, number>();
+      sortedStudents.forEach(([id], idx) => rankById.set(id, idx + 1));
+      updatedStudents = state.students.map((st) => {
+        const total = totals.get(st.id);
+        if (total === undefined) return st;
+        return { ...st, totalScore: total, rank: rankById.get(st.id) || 0 };
+      });
+      const affectedExamIds = new Set(updates.map((u) => u.examId));
+      updatedScores = nextScores.filter((s) => affectedExamIds.has(s.examId));
+      return {
+        scores: nextScores,
+        students: updatedStudents,
+        exams: derived.exams,
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
+        examList: buildExamList(nextScores, state.userSettings.examDates),
       };
     });
     if (updatedScores.length > 0) upsertScores(updatedScores);
@@ -766,7 +953,9 @@ export const useStore = create<Store>((set, get) => ({
             subjectCounts[score.subject] = (subjectCounts[score.subject] || 0) + 1;
           }
         }
-        const today = new Date().toISOString().split('T')[0];
+        const today =
+          state.userSettings.examDates[examName] ||
+          new Date().toISOString().split('T')[0];
         for (const [subject, total] of Object.entries(subjectAverages)) {
           const count = subjectCounts[subject] || 1;
           const avg = Math.round((total / count) * 10) / 10;
@@ -787,6 +976,10 @@ export const useStore = create<Store>((set, get) => ({
         scores: [...mappedScores, ...state.scores],
         studentScoreTrend: { ...state.studentScoreTrend, ...mappedTrend },
         examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
+        examList: buildExamList(
+          [...mappedScores, ...state.scores],
+          state.userSettings.examDates
+        ),
       };
     });
     upsertStudents(updatedStudents);

@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Search, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus, CheckSquare } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import ExcelImportButton from '@/components/ExcelImportButton';
+import ExcelExportButton from '@/components/ExcelExportButton';
 import { useStore } from '@/store/useStore';
 import { useToastStore } from '@/store/useToast';
 import { getFullScore } from '@/data/mockData';
@@ -13,7 +14,7 @@ import type { Student } from '@/types';
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'];
 
 export default function StudentsPage() {
-  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, updateStudent, addStudent, updateExamScores, activeClass } = useStore();
+  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, removeStudents, updateStudent, addStudent, updateExamScores, batchUpdateScores, examList, activeClass } = useStore();
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
 
@@ -22,6 +23,12 @@ export default function StudentsPage() {
   const [selectedExam, setSelectedExam] = useState('');
   const [remarkDraft, setRemarkDraft] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBatchScoreModal, setShowBatchScoreModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchExam, setBatchExam] = useState('');
+  const [batchSubject, setBatchSubject] = useState(SUBJECTS[0]);
+  const [batchMode, setBatchMode] = useState<'set' | 'add' | 'subtract'>('set');
+  const [batchValue, setBatchValue] = useState(0);
   const [addName, setAddName] = useState('');
   const [addStudentNo, setAddStudentNo] = useState('');
   const [editMode, setEditMode] = useState(false);
@@ -95,8 +102,45 @@ export default function StudentsPage() {
   }, [selectedStudent?.id, selectedExam, scores]);
 
   const handleDeleteStudent = (id: string) => {
+    if (!window.confirm('确认删除该学生及其成绩？')) return;
     removeStudent(id);
     showToast('学生已删除', 'info');
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`确认删除选中的 ${selectedIds.length} 名学生及其成绩？`)) return;
+    removeStudents(selectedIds);
+    setSelectedIds([]);
+    showToast('已删除选中学生', 'success');
+  };
+
+  const handleBatchSaveScores = () => {
+    if (selectedIds.length === 0 || !batchExam) return;
+    const updates = selectedIds.flatMap((studentId) => {
+      const existing = scores.find(
+        (s) => s.studentId === studentId && s.examId === batchExam && s.subject === batchSubject
+      );
+      if (!existing) return [];
+      let next = existing.score;
+      if (batchMode === 'set') next = batchValue;
+      if (batchMode === 'add') next += batchValue;
+      if (batchMode === 'subtract') next -= batchValue;
+      return [{ studentId, examId: batchExam, subject: batchSubject, score: next }];
+    });
+    if (updates.length === 0) {
+      showToast('所选学生在该考试中暂无此科目成绩', 'info');
+      return;
+    }
+    batchUpdateScores(updates);
+    setShowBatchScoreModal(false);
+    showToast('批量成绩已保存并重新排名', 'success');
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   const handleAddStudent = () => {
@@ -175,6 +219,7 @@ export default function StudentsPage() {
             </div>
             <div className="flex items-center gap-2">
               <ExcelImportButton variant="secondary" label="导入Excel" />
+              <ExcelExportButton />
               <button
                 onClick={handleAddStudent}
                 className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
@@ -201,11 +246,62 @@ export default function StudentsPage() {
             </div>
           </div>
 
+          {selectedIds.length > 0 && (
+            <div className="mt-4 flex items-center justify-between gap-3 bg-white rounded-xl border border-gray-200 p-3 flex-wrap">
+              <span className="text-sm text-gray-600">已选 {selectedIds.length} 人</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setBatchExam(examList[examList.length - 1] || '');
+                    setShowBatchScoreModal(true);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[#2dd4bf]/10 text-[#2dd4bf] text-xs rounded-lg hover:bg-[#2dd4bf]/20 transition-colors"
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  批量修改成绩
+                </button>
+                <button
+                  onClick={handleBatchDelete}
+                  className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  批量删除
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <div className="hidden lg:block">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
+                    <th className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredStudents.length > 0 &&
+                          filteredStudents.every((s) => selectedIds.includes(s.id))
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds((prev) => [
+                              ...new Set([
+                                ...prev,
+                                ...filteredStudents.map((s) => s.id),
+                              ]),
+                            ]);
+                          } else {
+                            setSelectedIds((prev) =>
+                              prev.filter(
+                                (id) =>
+                                  !filteredStudents.some((s) => s.id === id)
+                              )
+                            );
+                          }
+                        }}
+                        className="accent-[#2dd4bf]"
+                      />
+                    </th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学生</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学号</th>
                     <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
@@ -214,6 +310,14 @@ export default function StudentsPage() {
                 <tbody>
                   {filteredStudents.map((student) => (
                     <tr key={student.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(student.id)}
+                          onChange={() => toggleSelect(student.id)}
+                          className="accent-[#2dd4bf]"
+                        />
+                      </td>
                       <td className="px-5 py-3">
                         <button
                           onClick={() => handleOpenStudent(student)}
@@ -255,6 +359,12 @@ export default function StudentsPage() {
             <div className="lg:hidden divide-y divide-gray-100">
               {filteredStudents.map((student) => (
                 <div key={student.id} className="p-4 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(student.id)}
+                    onChange={() => toggleSelect(student.id)}
+                    className="accent-[#2dd4bf] shrink-0"
+                  />
                   <button
                     onClick={() => handleOpenStudent(student)}
                     className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-sm font-medium shrink-0"
@@ -515,6 +625,97 @@ export default function StudentsPage() {
               >
                 关闭
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBatchScoreModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowBatchScoreModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">批量修改成绩</h3>
+              <button
+                onClick={() => setShowBatchScoreModal(false)}
+                className="p-1 rounded hover:bg-gray-100"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">考试</label>
+                <select
+                  value={batchExam}
+                  onChange={(e) => setBatchExam(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                >
+                  {examList.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">科目</label>
+                <select
+                  value={batchSubject}
+                  onChange={(e) => setBatchSubject(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                >
+                  {SUBJECTS.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">方式</label>
+                  <select
+                    value={batchMode}
+                    onChange={(e) =>
+                      setBatchMode(e.target.value as 'set' | 'add' | 'subtract')
+                    }
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                  >
+                    <option value="set">设为</option>
+                    <option value="add">加</option>
+                    <option value="subtract">减</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">数值</label>
+                  <input
+                    type="number"
+                    value={batchValue}
+                    onChange={(e) => setBatchValue(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowBatchScoreModal(false)}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleBatchSaveScores}
+                  className="flex-1 px-4 py-2 rounded-lg bg-[#2dd4bf] text-white text-sm hover:bg-[#14b8a6] transition-colors"
+                >
+                  保存
+                </button>
+              </div>
             </div>
           </div>
         </div>

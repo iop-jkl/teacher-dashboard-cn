@@ -16,7 +16,7 @@ import ToastContainer from '@/components/ToastContainer';
 import ExcelImportButton from '@/components/ExcelImportButton';
 import StudentTable from '@/components/StudentTable';
 import { useStore } from '@/store/useStore';
-import { getClassAverageByExam, EXAM_NAMES, SUBJECTS } from '@/data/mockData';
+import { SUBJECTS } from '@/data/mockData';
 import type { ExamTrendPoint } from '@/types';
 
 type ViewType = 'trend' | 'ranking';
@@ -62,18 +62,9 @@ export default function AnalyticsPage() {
     currentExamIndex,
     setCurrentExamIndex,
     studentScoreTrend,
-    examTrendData,
+    examList,
   } = useStore();
   const [activeView, setActiveView] = useState<ViewType>('trend');
-
-  const examList = useMemo(() => {
-    const names = [...new Set(examTrendData.map((p) => p.examName).filter(Boolean))];
-    if (names.length > 0) return names;
-    const fromScores = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
-      a.localeCompare(b)
-    );
-    return fromScores.length > 0 ? fromScores : [...EXAM_NAMES];
-  }, [examTrendData, scores]);
 
   const examIndex = Math.min(Math.max(currentExamIndex, 0), examList.length - 1);
   const examName = examList[examIndex] || '暂无考试';
@@ -94,8 +85,8 @@ export default function AnalyticsPage() {
       }
       return result;
     }
-    return getClassAverageByExam(examIndex);
-  }, [scores, examName, examIndex]);
+    return [];
+  }, [scores, examName]);
 
   const historyData = useMemo(() => {
     const examNames = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
@@ -115,11 +106,6 @@ export default function AnalyticsPage() {
         return { name, avg: Math.round(avg * 10) / 10 };
       });
     }
-    return EXAM_NAMES.map((name, idx) => {
-      const data = getClassAverageByExam(idx);
-      const avg = data.reduce((sum, d) => sum + d.classAverage, 0) / (data.length || 1);
-      return { name, avg };
-    });
   }, [scores]);
 
   const chartData = useMemo(

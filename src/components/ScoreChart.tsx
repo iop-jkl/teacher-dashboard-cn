@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { examTrendData, SUBJECTS } from '@/data/mockData';
+import { SUBJECTS } from '@/data/mockData';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +24,7 @@ const COLORS: Record<string, string> = {
 
 export default function ScoreChart({ studentId }: { studentId?: string }) {
   const studentScoreTrend = useStore((s) => s.studentScoreTrend);
+  const classTrendData = useStore((s) => s.examTrendData);
   const [activeSubjects, setActiveSubjects] = useState<string[]>([...SUBJECTS]);
 
   const personalData = useMemo(() => {
@@ -39,7 +40,7 @@ export default function ScoreChart({ studentId }: { studentId?: string }) {
   }, [studentId, studentScoreTrend]);
 
   const isPersonal = Boolean(studentId);
-  const chartData = isPersonal ? personalData : examTrendData;
+  const chartData = isPersonal ? personalData : classTrendData;
   const xKey = isPersonal ? 'examName' : 'date';
 
   const toggleSubject = (subject: string) => {
