@@ -323,7 +323,10 @@ function applyExamDates(
 // ============================================================
 // 由 scores 派生 exam / trend 数据（保持 Analytics 与持久化数据一致）
 // ============================================================
-function deriveExamData(scores: Score[]): {
+function deriveExamData(
+  scores: Score[],
+  examDates: Record<string, string> = {}
+): {
   exams: Exam[];
   studentScoreTrend: Record<string, ExamTrendPoint[]>;
   examTrendData: ExamTrendPoint[];
@@ -349,11 +352,21 @@ function deriveExamData(scores: Score[]): {
     examAgg[s.examId].count[s.subject] = (examAgg[s.examId].count[s.subject] || 0) + 1;
   }
 
+  const sortedExamOrder = [...examOrder].sort((a, b) => {
+    const dateA = examDates[a] || '';
+    const dateB = examDates[b] || '';
+    return dateA.localeCompare(dateB) || a.localeCompare(b);
+  });
+
   for (const sid of Object.keys(studentTrend)) {
-    studentTrend[sid].sort((a, b) => examOrder.indexOf(a.examName) - examOrder.indexOf(b.examName));
+    studentTrend[sid].sort(
+      (a, b) =>
+        sortedExamOrder.indexOf(a.examName) -
+        sortedExamOrder.indexOf(b.examName)
+    );
   }
 
-  const examTrendData: ExamTrendPoint[] = examOrder.map((name) => {
+  const examTrendData: ExamTrendPoint[] = sortedExamOrder.map((name) => {
     const p: ExamTrendPoint = { examName: name, date: '' };
     for (const subj of Object.keys(examAgg[name].sum)) {
       p[subj] = Math.round((examAgg[name].sum[subj] / examAgg[name].count[subj]) * 10) / 10;
@@ -362,7 +375,7 @@ function deriveExamData(scores: Score[]): {
   });
 
   const exams: Exam[] = [];
-  for (const name of examOrder) {
+  for (const name of sortedExamOrder) {
     for (const subj of Object.keys(examAgg[name].sum)) {
       const avg = Math.round((examAgg[name].sum[subj] / examAgg[name].count[subj]) * 10) / 10;
       exams.push({
@@ -537,7 +550,7 @@ export const useStore = create<Store>((set, get) => ({
       delete examDates[name];
       const nextScores = state.scores.filter((s) => s.examId !== name);
       const derived = nextScores.length
-        ? deriveExamData(nextScores)
+        ? deriveExamData(nextScores, state.userSettings.examDates)
         : { exams: [], studentScoreTrend: {}, examTrendData: [] };
       return {
         scores: nextScores,
@@ -618,7 +631,7 @@ export const useStore = create<Store>((set, get) => ({
 
         // 有成绩时由成绩派生 exam/trend；无成绩时退回 mock（保持原演示效果）
         const derived = scores.length
-          ? deriveExamData(scores)
+          ? deriveExamData(scores, userSettings.examDates)
           : { exams: [], studentScoreTrend: {}, examTrendData: [] };
         const derivedExams = derived.exams.map((e) => ({
           ...e,
@@ -700,7 +713,7 @@ export const useStore = create<Store>((set, get) => ({
     set((state) => {
       const nextScores = state.scores.filter((s) => s.studentId !== id);
       const derived = nextScores.length
-        ? deriveExamData(nextScores)
+        ? deriveExamData(nextScores, state.userSettings.examDates)
         : { exams: [], studentScoreTrend: {}, examTrendData: [] };
       return {
         students: state.students.filter((s) => s.id !== id),
@@ -720,7 +733,7 @@ export const useStore = create<Store>((set, get) => ({
       const nextStudents = state.students.filter((s) => !ids.includes(s.id));
       const nextScores = state.scores.filter((s) => !ids.includes(s.studentId));
       const derived = nextScores.length
-        ? deriveExamData(nextScores)
+        ? deriveExamData(nextScores, state.userSettings.examDates)
         : { exams: [], studentScoreTrend: {}, examTrendData: [] };
       return {
         students: nextStudents,
@@ -798,15 +811,23 @@ export const useStore = create<Store>((set, get) => ({
     for (const [sid, points] of Object.entries(newTrend)) {
       mappedTrend[mapId(sid)] = points;
     }
-    set((state) => ({
-      scores: [...mappedScores, ...state.scores],
-      studentScoreTrend: { ...state.studentScoreTrend, ...mappedTrend },
-      examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
-      examList: buildExamList(
-        [...mappedScores, ...state.scores],
+    set((state) => {
+      const combinedScores = [...mappedScores, ...state.scores];
+      const derived = deriveExamData(
+        combinedScores,
         state.userSettings.examDates
-      ),
-    }));
+      );
+      return {
+        scores: combinedScores,
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
+        exams: applyExamDates(derived.exams, state.userSettings.examDates),
+        examList: buildExamList(
+          combinedScores,
+          state.userSettings.examDates
+        ),
+      };
+    });
     upsertScores(mappedScores);
   },
   updateExamScores: (studentId, examId, updates) => {
@@ -820,7 +841,10 @@ export const useStore = create<Store>((set, get) => ({
           return update ? { ...s, score: update.score } : s;
         })
       );
-      const derived = deriveExamData(nextScores);
+      const derived = deriveExamData(
+        nextScores,
+        state.userSettings.examDates
+      );
       const examOrder = buildExamList(nextScores, state.userSettings.examDates);
       const latestExamId = examOrder[examOrder.length - 1] || '';
       const totals = new Map<string, number>();
@@ -862,7 +886,10 @@ export const useStore = create<Store>((set, get) => ({
           return score === undefined ? s : { ...s, score };
         })
       );
-      const derived = deriveExamData(nextScores);
+      const derived = deriveExamData(
+        nextScores,
+        state.userSettings.examDates
+      );
       const examOrder = buildExamList(nextScores, state.userSettings.examDates);
       const latestExamId = examOrder[examOrder.length - 1] || '';
       const totals = new Map<string, number>();
@@ -970,14 +997,19 @@ export const useStore = create<Store>((set, get) => ({
         }
       }
 
+      const combinedScores = [...mappedScores, ...state.scores];
+      const derived = deriveExamData(
+        combinedScores,
+        state.userSettings.examDates
+      );
       return {
         students: updated,
-        exams: updatedExams,
-        scores: [...mappedScores, ...state.scores],
-        studentScoreTrend: { ...state.studentScoreTrend, ...mappedTrend },
-        examTrendData: newExamTrend.length > 0 ? newExamTrend : state.examTrendData,
+        exams: applyExamDates(derived.exams, state.userSettings.examDates),
+        scores: combinedScores,
+        studentScoreTrend: derived.studentScoreTrend,
+        examTrendData: derived.examTrendData,
         examList: buildExamList(
-          [...mappedScores, ...state.scores],
+          combinedScores,
           state.userSettings.examDates
         ),
       };
