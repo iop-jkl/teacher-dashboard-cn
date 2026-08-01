@@ -21,6 +21,7 @@ export default function StudentTable({
   className = '高一(3)班',
 }: StudentTableProps) {
   const updateExamScores = useStore((s) => s.updateExamScores);
+  const examList = useStore((s) => s.examList);
   const showToast = useToastStore((s) => s.showToast);
   const [sortKey, setSortKey] = useState('总分');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -34,7 +35,7 @@ export default function StudentTable({
     );
   }, [scores]);
 
-  const activeExamId = examId || latestExamId;
+  const activeExamId = examId || examList[examList.length - 1] || latestExamId;
 
   const rankedStudents = useMemo(() => {
     return students

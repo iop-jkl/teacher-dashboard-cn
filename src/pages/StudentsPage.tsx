@@ -14,7 +14,7 @@ import type { Student } from '@/types';
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'];
 
 export default function StudentsPage() {
-  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, removeStudents, updateStudent, addStudent, updateExamScores, batchUpdateScores, examList, activeClass } = useStore();
+  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, removeStudents, updateStudent, addStudent, updateExamScores, batchUpdateScores, examList, userSettings, activeClass } = useStore();
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
 
@@ -51,14 +51,17 @@ export default function StudentsPage() {
 
   const studentExams = useMemo(() => {
     if (!selectedStudent) return [];
-    return [
-      ...new Set(
-        scores
-          .filter((s) => s.studentId === selectedStudent.id)
-          .map((s) => s.examId)
-      ),
-    ].sort((a, b) => a.localeCompare(b));
-  }, [scores, selectedStudent]);
+    const examSet = new Set(
+      scores
+        .filter((s) => s.studentId === selectedStudent.id)
+        .map((s) => s.examId)
+    );
+    return [...examSet].sort((a, b) => {
+      const dateA = userSettings.examDates[a] || '';
+      const dateB = userSettings.examDates[b] || '';
+      return dateA.localeCompare(dateB) || a.localeCompare(b);
+    });
+  }, [scores, selectedStudent, userSettings.examDates]);
 
   const selectedExamScores = useMemo(() => {
     if (!selectedStudent || !selectedExam) return [];
