@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [build]
   command = "npm run build"
   publish = "dist"
@@ -6,3 +7,44 @@
   from = "/*"
   to = "/index.html"
   status = 200
+=======
+redirectsOrigin = "config"
+plugins = []
+headers = []
+
+[functions]
+
+  [functions."*"]
+
+[build]
+publish = "D:\\Trae\\Teacher\\dist"
+publishOrigin = "config"
+command = "npm run build"
+commandOrigin = "config"
+
+  [build.environment]
+
+  [build.processing]
+
+    [build.processing.css]
+
+    [build.processing.html]
+
+    [build.processing.images]
+
+    [build.processing.js]
+
+  [build.services]
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+force = false
+
+  [redirects.query]
+
+  [redirects.conditions]
+
+  [redirects.headers]
+>>>>>>> 478e00dbf7050d8777257f9d9521c5591732d7d3
