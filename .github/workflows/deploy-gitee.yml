@@ -33,20 +33,22 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     env:
-      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-      GIT_TERMINAL_PROMPT: '0'
+      GITEE_SSH_KEY: ${{ secrets.GITEE_SSH_KEY }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: gitee-dist
           path: dist
-      - name: Force push build output to Gitee
+      - name: Push build output to Gitee via SSH
         run: |
+          mkdir -p ~/.ssh
+          printf '%s' "$GITEE_SSH_KEY" > ~/.ssh/gitee_key
+          chmod 600 ~/.ssh/gitee_key
+          ssh-keyscan -t ed25519 gitee.com >> ~/.ssh/known_hosts 2>/dev/null || true
           cd dist
           git init -b gitee-pages
           git config user.name "iop-jkl"
           git config user.email "iop-jkl@users.noreply.github.com"
           git add -A
           git commit --allow-empty -m "chore: deploy to Gitee Pages"
-          AUTH=$(printf '%s:%s' 'iop-jkl' "$GITEE_TOKEN" | base64)
-          timeout 120 git -c credential.helper= -c http.version=HTTP/1.0 -c http.extraheader="Authorization: Basic $AUTH" push --force https://gitee.com/iop-jkl/teacher-dashboard-cn.git HEAD:gitee-pages
+          GIT_SSH_COMMAND="ssh -i $HOME/.ssh/gitee_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" timeout 120 git push --force git@gitee.com:iop-jkl/teacher-dashboard-cn.git HEAD:gitee-pages
