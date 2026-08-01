@@ -9,16 +9,6 @@ const STUDENT_NO_FIELDS = ['学号', 'studentNo', 'StudentNo', '准考证号'];
 const NAME_FIELDS = ['姓名', 'name', 'Name', '学生姓名'];
 const TOTAL_FIELDS = ['总分', 'totalScore', 'TotalScore', 'total', '合计'];
 
-function subjectRankFields(subject: string): string[] {
-  return [
-    `${subject}班排名`,
-    `${subject}班内排名`,
-    `${subject}班级排名`,
-    `${subject}排名`,
-    `${subject}SubjectRank`,
-  ];
-}
-
 function findSubjectKey(keys: string[], subject: string): string | undefined {
   const lowerSubject = subject.toLowerCase();
   const excluded = ['排名', '名次', 'rank', '平均'];
@@ -176,6 +166,7 @@ function parseScoreSheet(
 
       let studentId = studentIdMap.get(studentNo) || studentNo;
 
+      const providedTotal = Number(getField(r, TOTAL_FIELDS) || 0);
       let totalScore = 0;
       const subjectsMap: Record<string, number> = {};
 
@@ -190,9 +181,9 @@ function parseScoreSheet(
               examId: examName,
               subject,
               score,
-              classRank: Number(getField(r, RANK_FIELDS) || 0),
+              classRank: 0,
               schoolRank: Number(getField(r, SCHOOL_RANK_FIELDS) || 0),
-              subjectRank: Number(getField(r, subjectRankFields(subject)) || 0),
+              subjectRank: 0,
               totalStudents: 45,
             });
 
@@ -204,6 +195,10 @@ function parseScoreSheet(
             }
           }
         }
+      }
+
+      if (providedTotal > 0) {
+        totalScore = providedTotal;
       }
 
       if (totalScore > 0) {
@@ -221,6 +216,7 @@ function parseScoreSheet(
       const studentNo = String(getField(r, STUDENT_NO_FIELDS) || '');
       const subject = matchSubject(String(getField(r, ['学科', 'subject', '学科名称']) || '')) || '';
       const score = Number(getField(r, SCORE_FIELDS) || 0);
+      const providedTotal = Number(getField(r, TOTAL_FIELDS) || 0);
       if (!studentNo || !subject || score <= 0) continue;
 
       let studentId = studentIdMap.get(studentNo) || studentNo;
@@ -231,9 +227,9 @@ function parseScoreSheet(
         examId: examName,
         subject,
         score,
-        classRank: Number(getField(r, RANK_FIELDS) || 0),
+        classRank: 0,
         schoolRank: Number(getField(r, SCHOOL_RANK_FIELDS) || 0),
-        subjectRank: Number(getField(r, RANK_FIELDS) || 0),
+        subjectRank: 0,
         totalStudents: 45,
       });
 
@@ -247,6 +243,9 @@ function parseScoreSheet(
       }
       const entry = studentTotals.get(studentId)!;
       entry.total += score;
+      if (providedTotal > 0) {
+        entry.total = providedTotal;
+      }
       entry.subjects[subject] = score;
     }
   }
@@ -258,7 +257,7 @@ function parseScoreSheet(
     if (entries.length === 0) continue;
     const rankMap = assignRanks(entries);
     for (const s of scores) {
-      if (s.subject === subject && !s.subjectRank) {
+      if (s.subject === subject) {
         s.subjectRank = rankMap.get(s.studentId) ?? 0;
       }
     }
@@ -294,12 +293,7 @@ function parseScoreSheet(
 
   const rankById = new Map(computedRankings.map((r) => [r.studentId, r.rank]));
   for (const s of scores) {
-    if (!s.classRank) {
-      s.classRank = rankById.get(s.studentId) ?? 0;
-    }
-    if (!s.schoolRank) {
-      s.schoolRank = rankById.get(s.studentId) ?? 0;
-    }
+    s.classRank = rankById.get(s.studentId) ?? 0;
   }
 
   return { scores, studentTrends, examTrendPoint, computedRankings, warnings };
