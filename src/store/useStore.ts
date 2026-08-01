@@ -215,7 +215,7 @@ async function upsertScores(rows: Score[]) {
   if (!supabase || rows.length === 0) return;
   const { error } = await supabase.from('scores').upsert(rows.map(scoreToRow));
   if (!error) return;
-  if (/column .* (subject_rank|school_rank)/i.test(error.message)) {
+  if (/subject_rank|school_rank/i.test(error.message)) {
     const fallbackRows = rows.map((s) => {
       const row = scoreToRow(s);
       delete row.subject_rank;

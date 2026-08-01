@@ -19,6 +19,22 @@ function subjectRankFields(subject: string): string[] {
   ];
 }
 
+function findSubjectKey(keys: string[], subject: string): string | undefined {
+  const lowerSubject = subject.toLowerCase();
+  const excluded = ['排名', '名次', 'rank', '平均'];
+  return keys.find((k) => {
+    const kl = k.trim().toLowerCase();
+    if (kl === lowerSubject) return true;
+    if (excluded.some((word) => kl.includes(word.toLowerCase()))) return false;
+    return kl.includes(lowerSubject);
+  });
+}
+
+function matchSubject(raw: string): string | undefined {
+  const value = String(raw || '').trim();
+  return SUBJECTS.find((s) => value === s || value.includes(s));
+}
+
 export interface ComputedRanking {
   studentId: string;
   studentNo: string;
@@ -121,9 +137,7 @@ function parseScoreSheet(
 
   const subjectColumns: string[] = [];
   for (const subject of SUBJECTS) {
-    const key = firstRowKeys.find(
-      (k) => k.trim().toLowerCase() === subject.trim().toLowerCase()
-    );
+    const key = findSubjectKey(firstRowKeys, subject);
     if (key) {
       const val = Number(firstRow[key]);
       if (!isNaN(val) || key === subject) {
@@ -133,7 +147,7 @@ function parseScoreSheet(
   }
 
   const hasSubjectAndScore = SUBJECTS.some((s) =>
-    firstRowKeys.some((k) => k.trim().toLowerCase() === s.trim().toLowerCase())
+    findSubjectKey(firstRowKeys, s) !== undefined
   );
 
   const isWideFormat = hasSubjectAndScore || subjectColumns.length > 0;
@@ -166,9 +180,7 @@ function parseScoreSheet(
       const subjectsMap: Record<string, number> = {};
 
       for (const subject of SUBJECTS) {
-        const subjectKey = Object.keys(r).find(
-          (k) => k.trim().toLowerCase() === subject.trim().toLowerCase()
-        );
+        const subjectKey = findSubjectKey(Object.keys(r), subject);
         if (subjectKey) {
           const score = Number(r[subjectKey]);
           if (!isNaN(score) && score >= 0) {
@@ -207,9 +219,9 @@ function parseScoreSheet(
     for (const row of data) {
       const r = row as Record<string, any>;
       const studentNo = String(getField(r, STUDENT_NO_FIELDS) || '');
-      const subject = String(getField(r, ['学科', 'subject']) || '');
+      const subject = matchSubject(String(getField(r, ['学科', 'subject', '学科名称']) || '')) || '';
       const score = Number(getField(r, SCORE_FIELDS) || 0);
-      if (!studentNo || !subject || !SUBJECTS.includes(subject as any) || score <= 0) continue;
+      if (!studentNo || !subject || score <= 0) continue;
 
       let studentId = studentIdMap.get(studentNo) || studentNo;
 
