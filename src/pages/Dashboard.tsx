@@ -36,6 +36,7 @@ export default function Dashboard() {
     closeSidebar,
     announcements,
     students,
+    scores,
     studentScoreTrend,
   } = useStore();
 
@@ -304,7 +305,7 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
             <ExcelImportButton label="导入Excel数据" />
           </div>
-          <StudentTable students={students} />
+          <StudentTable students={students} scores={scores} />
         </div>
       </main>
     </div>

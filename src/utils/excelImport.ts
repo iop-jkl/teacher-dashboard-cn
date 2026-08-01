@@ -53,6 +53,19 @@ function hasField(row: Record<string, any>, fields: string[]): boolean {
   return getField(row, fields) !== undefined;
 }
 
+function assignRanks(entries: { id: string; score: number }[]): Map<string, number> {
+  const sorted = [...entries].sort((a, b) => b.score - a.score);
+  const rankMap = new Map<string, number>();
+  sorted.forEach((entry, idx) => {
+    const rank =
+      idx > 0 && sorted[idx - 1].score === entry.score
+        ? rankMap.get(sorted[idx - 1].id)!
+        : idx + 1;
+    rankMap.set(entry.id, rank);
+  });
+  return rankMap;
+}
+
 function normalizeStudentRow(row: Record<string, any>): Student | null {
   const name = String(getField(row, NAME_FIELDS) || '');
   const studentNo = String(getField(row, STUDENT_NO_FIELDS) || '');
@@ -225,6 +238,19 @@ function parseScoreSheet(
     }
   }
 
+  for (const subject of SUBJECTS) {
+    const entries = scores
+      .filter((s) => s.subject === subject)
+      .map((s) => ({ id: s.studentId, score: s.score }));
+    if (entries.length === 0) continue;
+    const rankMap = assignRanks(entries);
+    for (const s of scores) {
+      if (s.subject === subject && !s.subjectRank) {
+        s.subjectRank = rankMap.get(s.studentId) ?? 0;
+      }
+    }
+  }
+
   const computedRankings: ComputedRanking[] = [];
   const sortedStudents = Array.from(studentTotals.entries())
     .sort((a, b) => b[1].total - a[1].total);
@@ -252,6 +278,16 @@ function parseScoreSheet(
   });
 
   const examTrendPoint = Object.keys(trendPoint).length > 2 ? trendPoint : null;
+
+  const rankById = new Map(computedRankings.map((r) => [r.studentId, r.rank]));
+  for (const s of scores) {
+    if (!s.classRank) {
+      s.classRank = rankById.get(s.studentId) ?? 0;
+    }
+    if (!s.schoolRank) {
+      s.schoolRank = rankById.get(s.studentId) ?? 0;
+    }
+  }
 
   return { scores, studentTrends, examTrendPoint, computedRankings, warnings };
 }
@@ -378,21 +414,21 @@ export function generateTemplateExcel(): Blob {
   const wb = XLSX.utils.book_new();
 
   const studentData = [
-    { 学号: '2026001', 姓名: '陈思远', 班级: '高一(3)班', 排名: 1, 趋势: 12 },
-    { 学号: '2026002', 姓名: '林晓晴', 班级: '高一(3)班', 排名: 2, 趋势: 8 },
-    { 学号: '2026003', 姓名: '王浩然', 班级: '高一(3)班', 排名: 3, 趋势: 0 },
-    { 学号: '2026004', 姓名: '赵雨桐', 班级: '高一(3)班', 排名: 4, 趋势: 6 },
-    { 学号: '2026005', 姓名: '刘思琪', 班级: '高一(3)班', 排名: 5, 趋势: -4 },
+    { 学号: '2026001', 姓名: '陈思远', 排名: 1, 趋势: 12 },
+    { 学号: '2026002', 姓名: '林晓晴', 排名: 2, 趋势: 8 },
+    { 学号: '2026003', 姓名: '王浩然', 排名: 3, 趋势: 0 },
+    { 学号: '2026004', 姓名: '赵雨桐', 排名: 4, 趋势: 6 },
+    { 学号: '2026005', 姓名: '刘思琪', 排名: 5, 趋势: -4 },
   ];
   const studentSheet = XLSX.utils.json_to_sheet(studentData);
   XLSX.utils.book_append_sheet(wb, studentSheet, '学生名单');
 
   const scoreData = [
-    { 学号: '2026001', 姓名: '陈思远', 语文: 95, 语文班排名: 1, 数学: 100, 数学班排名: 1, 英语: 92, 英语班排名: 2, 物理: 94, 物理班排名: 1, 化学: 95, 化学班排名: 1, 生物: 98, 生物班排名: 1, 班级排名: 1, 学校排名: 8 },
-    { 学号: '2026002', 姓名: '林晓晴', 语文: 91, 语文班排名: 2, 数学: 95, 数学班排名: 2, 英语: 89, 英语班排名: 3, 物理: 87, 物理班排名: 3, 化学: 90, 化学班排名: 2, 生物: 93, 生物班排名: 2, 班级排名: 2, 学校排名: 16 },
-    { 学号: '2026003', 姓名: '王浩然', 语文: 86, 语文班排名: 4, 数学: 91, 数学班排名: 4, 英语: 83, 英语班排名: 5, 物理: 89, 物理班排名: 2, 化学: 85, 化学班排名: 4, 生物: 87, 生物班排名: 4, 班级排名: 3, 学校排名: 24 },
-    { 学号: '2026004', 姓名: '赵雨桐', 语文: 88, 语文班排名: 3, 数学: 93, 数学班排名: 3, 英语: 85, 英语班排名: 4, 物理: 86, 物理班排名: 4, 化学: 88, 化学班排名: 3, 生物: 91, 生物班排名: 3, 班级排名: 4, 学校排名: 30 },
-    { 学号: '2026005', 姓名: '刘思琪', 语文: 84, 语文班排名: 5, 数学: 90, 数学班排名: 5, 英语: 87, 英语班排名: 1, 物理: 83, 物理班排名: 5, 化学: 86, 化学班排名: 5, 生物: 88, 生物班排名: 5, 班级排名: 5, 学校排名: 35 },
+    { 学号: '2026001', 姓名: '陈思远', 语文: 95, 语文班排名: 1, 数学: 100, 数学班排名: 1, 英语: 92, 英语班排名: 2, 物理: 94, 物理班排名: 1, 化学: 95, 化学班排名: 1, 生物: 98, 生物班排名: 1, 总分: 574, 班级排名: 1, 学校排名: 8 },
+    { 学号: '2026002', 姓名: '林晓晴', 语文: 91, 语文班排名: 2, 数学: 95, 数学班排名: 2, 英语: 89, 英语班排名: 3, 物理: 87, 物理班排名: 3, 化学: 90, 化学班排名: 2, 生物: 93, 生物班排名: 2, 总分: 545, 班级排名: 2, 学校排名: 16 },
+    { 学号: '2026003', 姓名: '王浩然', 语文: 86, 语文班排名: 4, 数学: 91, 数学班排名: 4, 英语: 83, 英语班排名: 5, 物理: 89, 物理班排名: 2, 化学: 85, 化学班排名: 4, 生物: 87, 生物班排名: 4, 总分: 521, 班级排名: 3, 学校排名: 24 },
+    { 学号: '2026004', 姓名: '赵雨桐', 语文: 88, 语文班排名: 3, 数学: 93, 数学班排名: 3, 英语: 85, 英语班排名: 4, 物理: 86, 物理班排名: 4, 化学: 88, 化学班排名: 3, 生物: 91, 生物班排名: 3, 总分: 531, 班级排名: 4, 学校排名: 30 },
+    { 学号: '2026005', 姓名: '刘思琪', 语文: 84, 语文班排名: 5, 数学: 90, 数学班排名: 5, 英语: 87, 英语班排名: 1, 物理: 83, 物理班排名: 5, 化学: 86, 化学班排名: 5, 生物: 88, 生物班排名: 5, 总分: 518, 班级排名: 5, 学校排名: 35 },
   ];
   const scoreSheet = XLSX.utils.json_to_sheet(scoreData);
   XLSX.utils.book_append_sheet(wb, scoreSheet, '月考三');
