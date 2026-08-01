@@ -4,7 +4,11 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+const repoName = 'teacher-dashboard-cn';
+const isGhPages = process.env.GH_PAGES === 'true';
+
 export default defineConfig({
+  base: isGhPages ? `/${repoName}/` : '/',
   build: {
     sourcemap: 'hidden',
   },

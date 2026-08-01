@@ -20,6 +20,14 @@ export default function App() {
   }, [loadFromSupabase]);
 
   useEffect(() => {
+    const pendingRedirect = sessionStorage.getItem('gh-pages-redirect');
+    if (pendingRedirect) {
+      sessionStorage.removeItem('gh-pages-redirect');
+      window.location.replace(pendingRedirect);
+    }
+  }, []);
+
+  useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 1024) {
         closeSidebar();
@@ -30,7 +38,7 @@ export default function App() {
   }, [closeSidebar]);
 
   return (
-    <Router>
+    <Router basename={window.location.hostname === 'iop-jkl.github.io' ? '/teacher-dashboard-cn' : ''}>
       {supabaseError && (
         <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-center gap-3 bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800">
           <span>{supabaseError}</span>
