@@ -89,11 +89,8 @@ export default function AnalyticsPage() {
   }, [scores, examName]);
 
   const historyData = useMemo(() => {
-    const examNames = [...new Set(scores.map((s) => s.examId))].sort((a, b) =>
-      a.localeCompare(b)
-    );
-    if (examNames.length > 0) {
-      return examNames.map((name) => {
+    if (examList.length > 0) {
+      return examList.map((name) => {
         const totals = new Map<string, number>();
         for (const s of scores.filter((x) => x.examId === name)) {
           totals.set(s.studentId, (totals.get(s.studentId) || 0) + s.score);
@@ -106,7 +103,8 @@ export default function AnalyticsPage() {
         return { name, avg: Math.round(avg * 10) / 10 };
       });
     }
-  }, [scores]);
+    return [];
+  }, [scores, examList]);
 
   const chartData = useMemo(
     () =>
