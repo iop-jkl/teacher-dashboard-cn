@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Calendar, Plus, ChevronLeft, ChevronRight, Clock, MapPin, Users, X } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import ExcelImportButton from '@/components/ExcelImportButton';
 import { useStore, type ScheduleEvent } from '@/store/useStore';
@@ -99,6 +100,7 @@ export default function SchedulePage() {
                 <Plus className="w-4 h-4" />
                 添加日程
               </button>
+              <UserMenu />
             </div>
           </div>
         </header>

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import ExcelImportButton from '@/components/ExcelImportButton';
 import { useStore } from '@/store/useStore';
@@ -110,6 +111,7 @@ export default function StudentsPage() {
                 <UserPlus className="w-4 h-4" />
                 添加
               </button>
+              <UserMenu />
             </div>
           </div>
         </header>

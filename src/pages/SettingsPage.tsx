@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Save, User, LogOut } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 
 export default function SettingsPage() {
@@ -13,6 +16,8 @@ export default function SettingsPage() {
     userSettings: storeSettings,
     updateSettings,
   } = useStore();
+  const navigate = useNavigate();
+  const logout = useAuthStore((s) => s.logout);
   const showToast = useToastStore((s) => s.showToast);
 
   const [localSettings, setLocalSettings] = useState(storeSettings);
@@ -45,7 +50,9 @@ export default function SettingsPage() {
   };
 
   const handleLogout = () => {
-    showToast('已退出登录（演示）', 'info');
+    logout();
+    showToast('已退出登录', 'info');
+    navigate('/login');
   };
 
   return (
@@ -67,6 +74,9 @@ export default function SettingsPage() {
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">设置</h2>
                 <p className="text-xs text-gray-500 mt-0.5">偏好与账户管理</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <UserMenu />
             </div>
           </div>
         </header>

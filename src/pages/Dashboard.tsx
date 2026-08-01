@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Bell, Search, ChevronDown, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell, Search, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import UserMenu from '@/components/UserMenu';
 import ReminderCard from '@/components/ReminderCard';
 import SubjectCard from '@/components/SubjectCard';
 import ScoreChart from '@/components/ScoreChart';
@@ -168,12 +169,7 @@ export default function Dashboard() {
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
               </button>
 
-              <button className="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-sm font-medium">
-                  王
-                </div>
-                <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
-              </button>
+              <UserMenu />
             </div>
           </div>
         </header>

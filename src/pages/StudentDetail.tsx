@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Award, BookOpen, TrendingUp } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import StudentRadar from '@/components/RadarChart';
 import ScoreChart from '@/components/ScoreChart';
@@ -69,6 +70,9 @@ export default function StudentDetail() {
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">学生成绩详情</h2>
                 <p className="text-xs text-gray-500 mt-0.5">{student.className}</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <UserMenu />
             </div>
           </div>
         </header>

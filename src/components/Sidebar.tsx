@@ -9,6 +9,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useStore, type PageKey } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 
 interface SidebarProps {
@@ -37,6 +38,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const closeSidebar = useStore((s) => s.closeSidebar);
   const userSettings = useStore((s) => s.userSettings);
   const showToast = useToastStore((s) => s.showToast);
+  const logout = useAuthStore((s) => s.logout);
 
   const handleNavigate = (item: typeof navItems[number]) => {
     setActivePage(item.key);
@@ -45,8 +47,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   };
 
   const handleLogout = () => {
-    showToast('已退出登录（演示）', 'info');
+    logout();
+    showToast('已退出登录', 'info');
     closeSidebar();
+    navigate('/login');
   };
 
   const currentPath = location.pathname;

@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import Dashboard from '@/pages/Dashboard';
 import StudentDetail from '@/pages/StudentDetail';
@@ -6,7 +6,9 @@ import StudentsPage from '@/pages/StudentsPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SchedulePage from '@/pages/SchedulePage';
 import SettingsPage from '@/pages/SettingsPage';
+import LoginPage from '@/pages/LoginPage';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 
 export default function App() {
   const { activePage, setActivePage, closeSidebar } = useStore();
@@ -41,44 +43,78 @@ export default function App() {
         </div>
       )}
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/students"
           element={
-            <PageRouter activePage={activePage} setActivePage={setActivePage}>
-              <StudentsPage />
-            </PageRouter>
+            <RequireAuth>
+              <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                <StudentsPage />
+              </PageRouter>
+            </RequireAuth>
           }
         />
         <Route
           path="/analytics"
           element={
-            <PageRouter activePage={activePage} setActivePage={setActivePage}>
-              <AnalyticsPage />
-            </PageRouter>
+            <RequireAuth>
+              <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                <AnalyticsPage />
+              </PageRouter>
+            </RequireAuth>
           }
         />
         <Route
           path="/schedule"
           element={
-            <PageRouter activePage={activePage} setActivePage={setActivePage}>
-              <SchedulePage />
-            </PageRouter>
+            <RequireAuth>
+              <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                <SchedulePage />
+              </PageRouter>
+            </RequireAuth>
           }
         />
         <Route
           path="/settings"
           element={
-            <PageRouter activePage={activePage} setActivePage={setActivePage}>
-              <SettingsPage />
-            </PageRouter>
+            <RequireAuth>
+              <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                <SettingsPage />
+              </PageRouter>
+            </RequireAuth>
           }
         />
-        <Route path="/student/:id" element={<StudentDetail />} />
+        <Route
+          path="/student/:id"
+          element={
+            <RequireAuth>
+              <StudentDetail />
+            </RequireAuth>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
+}
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  return <>{children}</>;
 }
 
 function PageRouter({

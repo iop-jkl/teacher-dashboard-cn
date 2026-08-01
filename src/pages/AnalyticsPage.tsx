@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { BarChart3, TrendingUp, Award, Users, PieChart as PieChartIcon, Menu } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import ExcelImportButton from '@/components/ExcelImportButton';
 import { useStore } from '@/store/useStore';
@@ -47,6 +48,7 @@ export default function AnalyticsPage() {
             </div>
             <div className="flex items-center gap-2">
               <ExcelImportButton variant="secondary" label="导入Excel" />
+              <UserMenu />
             </div>
           </div>
         </header>
