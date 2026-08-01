@@ -1,9 +1,12 @@
-name: Mirror to Gitee Pages
+name: Update Gitee Pages source
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: gitee-pages
@@ -24,100 +27,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gitee-dist
-          path: dist
-
-  mirror:
-    needs: build
-    runs-on: ubuntu-latest
-    env:
-      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: gitee-dist
-          path: dist
-      - name: Sync build output to Gitee via API
+      - name: Commit build output to gitee-pages branch
         run: |
-          cd dist
-          python3 - <<'PY'
-          import base64
-          import json
-          import os
-          import urllib.error
-          import urllib.parse
-          import urllib.request
-          from pathlib import Path
-
-          token = os.environ['GITEE_TOKEN']
-          owner = 'iop-jkl'
-          repo = 'teacher-dashboard-cn'
-          branch = 'gitee-pages'
-          base = f'https://gitee.com/api/v5/repos/{owner}/{repo}'
-
-          def api(path, method='GET', body=None, params=None):
-              query = {'access_token': token}
-              if params:
-                  query.update(params)
-              url = f'{base}{path}?{urllib.parse.urlencode(query)}'
-              data = json.dumps(body).encode() if body is not None else None
-              req = urllib.request.Request(url, data=data, method=method)
-              req.add_header('Content-Type', 'application/json')
-              try:
-                  with urllib.request.urlopen(req, timeout=120) as resp:
-                      text = resp.read().decode()
-                      return resp.status, json.loads(text) if text else None
-              except urllib.error.HTTPError as e:
-                  text = e.read().decode(errors='replace')
-                  return e.code, text
-
-          status, tree = api(f'/git/trees/{branch}', params={'recursive': 1})
-          if status != 200:
-              raise SystemExit(f'list tree failed: {status} {tree}')
-          existing = {
-              item['path']: item['sha']
-              for item in tree.get('tree', [])
-              if item.get('type') == 'blob'
-          }
-
-          new_files = {
-              p.as_posix(): p
-              for p in sorted(Path('.').rglob('*'))
-              if p.is_file() and p.suffix != '.map'
-          }
-
-          for path in existing:
-              if path not in new_files:
-                  status, resp = api(
-                      f'/contents/{path}',
-                      'DELETE',
-                      {
-                          'access_token': token,
-                          'message': 'chore: remove stale file',
-                          'branch': branch,
-                          'sha': existing[path],
-                      },
-                  )
-                  if status not in (200, 201, 204):
-                      raise SystemExit(f'delete {path} failed: {status} {resp}')
-
-          for path, file in new_files.items():
-              content = base64.b64encode(file.read_bytes()).decode()
-              body = {
-                  'access_token': token,
-                  'content': content,
-                  'message': 'chore: deploy to Gitee Pages',
-                  'branch': branch,
-              }
-              if path in existing:
-                  body['sha'] = existing[path]
-                  status, resp = api(f'/contents/{path}', 'PUT', body)
-              else:
-                  status, resp = api(f'/contents/{path}', 'POST', body)
-              if status not in (200, 201):
-                  raise SystemExit(f'upload {path} failed: {status} {resp}')
-
-          print(f'Gitee Pages branch updated: {len(new_files)} files')
-          PY
+          git config user.name "iop-jkl"
+          git config user.email "iop-jkl@users.noreply.github.com"
+          git checkout --orphan gitee-pages
+          git rm -rf --quiet . || true
+          cp -r dist/. .
+          git add -A
+          git commit --allow-empty -m "chore: update Gitee Pages build"
+          git push --force origin HEAD:gitee-pages
