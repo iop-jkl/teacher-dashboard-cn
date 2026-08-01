@@ -524,7 +524,7 @@ export const useStore = create<Store>((set, get) => ({
           students: normalizedStudents.length ? normalizedStudents : [...mockStudents],
           scores,
           scheduleEvents: scheduleEvents.length ? scheduleEvents : [...initialScheduleEvents],
-          reminders: reminders.length ? reminders : [...mockReminders],
+          reminders: reminders.length ? reminders : [],
           announcements: announcements.length ? announcements : [...mockAnnouncements],
           userSettings,
           exams: derived.exams,
