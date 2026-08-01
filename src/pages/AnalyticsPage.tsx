@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { BarChart3, TrendingUp, Award, PieChart as PieChartIcon, Menu } from 'lucide-react';
+import { TrendingUp, Award, Menu } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
@@ -9,11 +9,36 @@ import { useStore } from '@/store/useStore';
 import { getClassAverageByExam, EXAM_NAMES, SUBJECTS } from '@/data/mockData';
 import type { ExamTrendPoint } from '@/types';
 
-type ViewType = 'trend' | 'distribution' | 'ranking';
+type ViewType = 'trend' | 'ranking';
 
 function sumPoint(point: ExamTrendPoint | undefined): number {
   if (!point) return 0;
   return SUBJECTS.reduce((sum, subject) => sum + (Number(point[subject]) || 0), 0);
+}
+
+function ExamSelector({
+  exams,
+  value,
+  onChange,
+}: {
+  exams: string[];
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
+      aria-label="选择考试"
+    >
+      {exams.map((name) => (
+        <option key={name} value={name}>
+          {name}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 export default function AnalyticsPage() {
@@ -24,6 +49,7 @@ export default function AnalyticsPage() {
     students,
     scores,
     currentExamIndex,
+    setCurrentExamIndex,
     studentScoreTrend,
     examTrendData,
   } = useStore();
@@ -112,11 +138,15 @@ export default function AnalyticsPage() {
 
   const views: { key: ViewType; label: string; icon: typeof TrendingUp }[] = [
     { key: 'trend', label: '趋势', icon: TrendingUp },
-    { key: 'distribution', label: '学科分布', icon: BarChart3 },
     { key: 'ranking', label: '学生排名', icon: Award },
   ];
 
   const colors = ['#2dd4bf', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#22c55e'];
+
+  const handleExamChange = (name: string) => {
+    const idx = examList.indexOf(name);
+    if (idx >= 0) setCurrentExamIndex(idx);
+  };
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -147,9 +177,9 @@ export default function AnalyticsPage() {
 
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <h3 className="text-base font-semibold text-gray-900">分析视图</h3>
-              <div className="flex gap-1 flex-wrap">
+              <div className="flex gap-1">
                 {views.map((view) => (
                   <button
                     key={view.key}
@@ -194,120 +224,55 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {classAvgData.map((d, idx) => (
-                  <div key={d.subject} className="bg-white rounded-xl border border-gray-100 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">{d.subject}</span>
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: colors[idx % colors.length] }}
-                      />
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold text-gray-900">
-                        {d.classAverage.toFixed(1)}
-                      </span>
-                      <span className="text-xs text-gray-400">/ 年级 {d.gradeAverage.toFixed(1)}</span>
-                    </div>
-                  </div>
-                ))}
-                {classAvgData.length === 0 && (
-                  <div className="col-span-full py-10 text-center text-sm text-gray-400">
-                    暂无成绩数据
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {activeView === 'distribution' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-[#2dd4bf]" />
-                  学科成绩分布
-                </h3>
-                <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">学科平均分</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">选择考试查看各科平均分</p>
+                  </div>
+                  <ExamSelector exams={examList} value={examName} onChange={handleExamChange} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {classAvgData.map((d, idx) => (
-                    <div key={d.subject}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-gray-600">{d.subject}</span>
-                        <span className="font-medium text-gray-900">{d.classAverage.toFixed(1)} 分</span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.min((d.classAverage / 100) * 100, 100)}%`,
-                            backgroundColor: colors[idx % colors.length],
-                          }}
+                    <div key={d.subject} className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">{d.subject}</span>
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: colors[idx % colors.length] }}
                         />
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-bold text-gray-900">
+                          {d.classAverage.toFixed(1)}
+                        </span>
+                        <span className="text-xs text-gray-400">/ 年级 {d.gradeAverage.toFixed(1)}</span>
                       </div>
                     </div>
                   ))}
                   {classAvgData.length === 0 && (
-                    <div className="py-10 text-center text-sm text-gray-400">暂无成绩数据</div>
+                    <div className="col-span-full py-10 text-center text-sm text-gray-400">
+                      暂无成绩数据
+                    </div>
                   )}
                 </div>
               </div>
-
-              <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <PieChartIcon className="w-5 h-5 text-[#2dd4bf]" />
-                  学科占比
-                </h3>
-                <div className="relative w-48 h-48 mx-auto">
-                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                    {(() => {
-                      const total = classAvgData.reduce((sum, d) => sum + d.classAverage, 0);
-                      let cumulative = 0;
-                      return classAvgData.map((d, idx) => {
-                        const pct = total > 0 ? (d.classAverage / total) * 100 : 0;
-                        const dasharray = `${pct} ${100 - pct}`;
-                        const offset = -cumulative;
-                        cumulative += pct;
-                        return (
-                          <circle
-                            key={d.subject}
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            fill="none"
-                            stroke={colors[idx % colors.length]}
-                            strokeWidth="20"
-                            strokeDasharray={dasharray}
-                            strokeDashoffset={offset}
-                          />
-                        );
-                      });
-                    })()}
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-gray-900">{students.length}</p>
-                      <p className="text-xs text-gray-500">名学生</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3 mt-4 justify-center">
-                  {classAvgData.map((d, idx) => (
-                    <div key={d.subject} className="flex items-center gap-1.5">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: colors[idx % colors.length] }}
-                      />
-                      <span className="text-xs text-gray-600">{d.subject}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            </>
           )}
 
           {activeView === 'ranking' && (
             <div className="space-y-6">
-              <StudentTable students={students} scores={scores} />
+              <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">学生排名</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">先选择考试，再选择排序方式</p>
+                  </div>
+                  <ExamSelector exams={examList} value={examName} onChange={handleExamChange} />
+                </div>
+              </div>
+
+              <StudentTable students={students} scores={scores} examId={examName} />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">

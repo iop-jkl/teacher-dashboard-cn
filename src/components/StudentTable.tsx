@@ -9,9 +9,10 @@ const RANK_SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物
 interface StudentTableProps {
   students: Student[];
   scores?: Score[];
+  examId?: string;
 }
 
-export default function StudentTable({ students, scores = [] }: StudentTableProps) {
+export default function StudentTable({ students, scores = [], examId }: StudentTableProps) {
   const navigate = useNavigate();
   const [sortKey, setSortKey] = useState('总分');
 
@@ -23,16 +24,18 @@ export default function StudentTable({ students, scores = [] }: StudentTableProp
     );
   }, [scores]);
 
+  const activeExamId = examId || latestExamId;
+
   const rankedStudents = useMemo(() => {
     return students
       .map((student) => {
         let value = student.totalScore;
-        if (sortKey !== '总分' && latestExamId) {
+        if (sortKey !== '总分' && activeExamId) {
           const latest = scores
             .filter(
               (s) =>
                 s.studentId === student.id &&
-                s.examId === latestExamId &&
+                s.examId === activeExamId &&
                 s.subject === sortKey
             )
             .sort((a, b) => b.examId.localeCompare(a.examId))[0];
@@ -42,7 +45,7 @@ export default function StudentTable({ students, scores = [] }: StudentTableProp
       })
       .sort((a, b) => b.value - a.value)
       .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-  }, [students, scores, sortKey, latestExamId]);
+  }, [students, scores, sortKey, activeExamId]);
 
   const scoreLabel = sortKey === '总分' ? '总分' : sortKey;
 

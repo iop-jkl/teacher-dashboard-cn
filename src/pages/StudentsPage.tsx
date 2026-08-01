@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Search, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
@@ -10,8 +10,6 @@ import { useToastStore } from '@/store/useToast';
 import { getFullScore } from '@/data/mockData';
 import type { Student } from '@/types';
 
-type FilterType = 'all' | 'improve' | 'decline' | 'stable';
-
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'];
 
 export default function StudentsPage() {
@@ -20,43 +18,64 @@ export default function StudentsPage() {
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedExam, setSelectedExam] = useState('');
   const [remarkDraft, setRemarkDraft] = useState('');
 
   const filteredStudents = useMemo(() => {
     let result = students;
-
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(query) ||
-          s.studentNo.includes(query)
+          s.studentNo.toLowerCase().includes(query)
       );
     }
+    return [...result].sort((a, b) =>
+      a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true })
+    );
+  }, [students, searchQuery]);
 
-    if (activeFilter !== 'all') {
-      result = result.filter((s) => {
-        if (activeFilter === 'improve') return s.trend === 'up';
-        if (activeFilter === 'decline') return s.trend === 'down';
-        if (activeFilter === 'stable') return s.trend === 'stable';
-        return true;
-      });
-    }
-
-    return result;
-  }, [students, searchQuery, activeFilter]);
-
-  const studentScores = useMemo(() => {
+  const studentExams = useMemo(() => {
     if (!selectedStudent) return [];
-    return scores.filter((s) => s.studentId === selectedStudent.id);
+    return [
+      ...new Set(
+        scores
+          .filter((s) => s.studentId === selectedStudent.id)
+          .map((s) => s.examId)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
   }, [scores, selectedStudent]);
 
-  const latestScore = useMemo(() => {
-    if (studentScores.length === 0) return undefined;
-    return [...studentScores].sort((a, b) => b.examId.localeCompare(a.examId))[0];
-  }, [studentScores]);
+  const selectedExamScores = useMemo(() => {
+    if (!selectedStudent || !selectedExam) return [];
+    return scores.filter(
+      (s) => s.studentId === selectedStudent.id && s.examId === selectedExam
+    );
+  }, [scores, selectedStudent, selectedExam]);
+
+  const prevExamScores = useMemo(() => {
+    if (!selectedStudent || !selectedExam) return [];
+    const idx = studentExams.indexOf(selectedExam);
+    const prev = idx > 0 ? studentExams[idx - 1] : '';
+    return prev
+      ? scores.filter((s) => s.studentId === selectedStudent.id && s.examId === prev)
+      : [];
+  }, [scores, selectedStudent, selectedExam, studentExams]);
+
+  const selectedTotal = useMemo(
+    () => selectedExamScores.reduce((sum, s) => sum + s.score, 0),
+    [selectedExamScores]
+  );
+  const prevTotal = useMemo(
+    () => prevExamScores.reduce((sum, s) => sum + s.score, 0),
+    [prevExamScores]
+  );
+  const selectedClassRank = selectedExamScores[0]?.classRank || 0;
+  const selectedSchoolRank = selectedExamScores[0]?.schoolRank || 0;
+  const hasPrev = studentExams.indexOf(selectedExam) > 0;
+  const totalDiff = hasPrev ? selectedTotal - prevTotal : 0;
 
   const handleDeleteStudent = (id: string) => {
     removeStudent(id);
@@ -70,6 +89,10 @@ export default function StudentsPage() {
   const handleOpenStudent = (student: Student) => {
     setSelectedStudent(student);
     setRemarkDraft(student.remark || '');
+    const exams = [
+      ...new Set(scores.filter((s) => s.studentId === student.id).map((s) => s.examId)),
+    ].sort((a, b) => a.localeCompare(b));
+    setSelectedExam(exams[exams.length - 1] || '');
   };
 
   const handleSaveRemark = () => {
@@ -79,13 +102,6 @@ export default function StudentsPage() {
       showToast('备注已保存', 'success');
     }
   };
-
-  const filterCounts = useMemo(() => ({
-    all: students.length,
-    improve: students.filter((s) => s.trend === 'up').length,
-    decline: students.filter((s) => s.trend === 'down').length,
-    stable: students.filter((s) => s.trend === 'stable').length,
-  }), [students]);
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -123,39 +139,15 @@ export default function StudentsPage() {
 
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="搜索学生姓名或学号"
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:bg-white focus:border-[#2dd4bf]/30 focus:outline-none transition-all"
-                />
-              </div>
-              <div className="flex items-center gap-1">
-                <Filter className="w-4 h-4 text-gray-400 mr-1" />
-                {([
-                  { key: 'all' as const, label: '全部', count: filterCounts.all },
-                  { key: 'improve' as const, label: '进步', count: filterCounts.improve },
-                  { key: 'decline' as const, label: '退步', count: filterCounts.decline },
-                  { key: 'stable' as const, label: '稳定', count: filterCounts.stable },
-                ]).map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => setActiveFilter(f.key)}
-                    className={`px-3 py-1.5 text-xs rounded-lg transition-all ${
-                      activeFilter === f.key
-                        ? 'bg-[#2dd4bf]/10 text-[#2dd4bf] font-medium'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {f.label}
-                    <span className="ml-1 text-gray-400">({f.count})</span>
-                  </button>
-                ))}
-              </div>
+            <div className="relative flex-1 min-w-[200px] max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索学生姓名或学号"
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:bg-white focus:border-[#2dd4bf]/30 focus:outline-none transition-all"
+              />
             </div>
           </div>
 
@@ -166,10 +158,6 @@ export default function StudentsPage() {
                   <tr className="border-b border-gray-100 bg-gray-50/50">
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学生</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学号</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">班级</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">总分</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">排名</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">趋势</th>
                     <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
                   </tr>
                 </thead>
@@ -190,26 +178,12 @@ export default function StudentsPage() {
                         </button>
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">{student.studentNo}</td>
-                      <td className="px-5 py-3 text-sm text-gray-600">{student.className}</td>
-                      <td className="px-5 py-3 text-sm font-medium text-gray-900">{student.totalScore}</td>
-                      <td className="px-5 py-3 text-sm text-gray-600">第 {student.rank} 名</td>
-                      <td className="px-5 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          student.trend === 'up' ? 'bg-emerald-50 text-emerald-600' :
-                          student.trend === 'down' ? 'bg-red-50 text-red-600' :
-                          'bg-gray-100 text-gray-500'
-                        }`}>
-                          {student.trend === 'up' ? `↑ +${student.trendValue}` :
-                           student.trend === 'down' ? `↓ ${student.trendValue}` :
-                           '→ 稳定'}
-                        </span>
-                      </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleOpenStudent(student)}
                             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-[#2dd4bf] transition-colors"
-                            title="查看详情"
+                            title="查看成绩"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -241,20 +215,8 @@ export default function StudentsPage() {
                     onClick={() => handleOpenStudent(student)}
                     className="flex-1 min-w-0 text-left"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900 truncate">{student.name}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
-                        student.trend === 'up' ? 'bg-emerald-50 text-emerald-600' :
-                        student.trend === 'down' ? 'bg-red-50 text-red-600' :
-                        'bg-gray-100 text-gray-500'
-                      }`}>
-                        {student.trend === 'up' ? `+${student.trendValue}` :
-                         student.trend === 'down' ? student.trendValue : '稳定'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {student.studentNo} · 总分 {student.totalScore}
-                    </p>
+                    <span className="text-sm font-medium text-gray-900 truncate">{student.name}</span>
+                    <p className="text-xs text-gray-500 mt-0.5">{student.studentNo}</p>
                   </button>
                   <button
                     onClick={() => handleOpenStudent(student)}
@@ -278,7 +240,7 @@ export default function StudentsPage() {
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedStudent(null)}>
           <div
-            className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
@@ -302,85 +264,123 @@ export default function StudentsPage() {
             </div>
 
             <div className="p-5 space-y-5">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-gray-500">总分</p>
-                  <p className="text-lg font-semibold text-gray-900 mt-1">{selectedStudent.totalScore}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-gray-500">班级排名</p>
-                  <p className="text-lg font-semibold text-gray-900 mt-1">第 {selectedStudent.rank} 名</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-gray-500">学校排名</p>
-                  <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {latestScore && latestScore.schoolRank > 0
-                      ? `第 ${latestScore.schoolRank} 名`
-                      : '—'}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-gray-500">趋势</p>
-                  <div className="flex items-center justify-center mt-1">
-                    {selectedStudent.trend === 'up' ? (
-                      <span className="flex items-center gap-1 text-emerald-600">
-                        <TrendingUp className="w-4 h-4" />
-                        <span className="text-sm font-medium">+{selectedStudent.trendValue}</span>
-                      </span>
-                    ) : selectedStudent.trend === 'down' ? (
-                      <span className="flex items-center gap-1 text-red-500">
-                        <TrendingDown className="w-4 h-4" />
-                        <span className="text-sm font-medium">{selectedStudent.trendValue}</span>
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-gray-400">
-                        <Minus className="w-4 h-4" />
-                        <span className="text-sm font-medium">稳定</span>
-                      </span>
-                    )}
+              {studentExams.length > 0 ? (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-900">选择考试</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">查看该次考试的成绩与排名</p>
                   </div>
+                  <select
+                    value={selectedExam}
+                    onChange={(e) => setSelectedExam(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
+                  >
+                    {studentExams.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
+              ) : (
+                <div className="py-6 text-center text-sm text-gray-400">
+                  暂无成绩数据，请通过 Excel 导入考试成绩
+                </div>
+              )}
 
-              <div>
-                <h4 className="text-sm font-medium text-gray-900 mb-3">各科成绩</h4>
-                {studentScores.length > 0 ? (
-                  <div className="space-y-2">
-                    {SUBJECTS.map((subject) => {
-                      const scoreEntries = studentScores.filter((s) => s.subject === subject);
-                      const latest = scoreEntries[scoreEntries.length - 1];
-                      if (!latest) return null;
-                      const fullScore = getFullScore(subject);
-                      const rate = Math.round((latest.score / fullScore) * 100);
-                      return (
-                        <div key={subject} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-sm text-gray-700">{subject}</span>
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-gray-400">满分 {fullScore}</span>
-                            <span className="text-sm font-medium text-gray-900">{latest.score} 分</span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              rate >= 85 ? 'bg-emerald-50 text-emerald-600' :
-                              rate >= 60 ? 'bg-amber-50 text-amber-600' :
-                              'bg-red-50 text-red-500'
-                            }`}>
-                              {rate}%
-                            </span>
-                            {(latest.subjectRank || latest.classRank) > 0 && (
-                              <span className="text-xs text-gray-400">
-                                班内第 {latest.subjectRank || latest.classRank} 名
+              {selectedExamScores.length > 0 && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500">总分</p>
+                      <p className="text-lg font-semibold text-gray-900 mt-1">{selectedTotal}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500">班级排名</p>
+                      <p className="text-lg font-semibold text-gray-900 mt-1">
+                        {selectedClassRank > 0 ? `第 ${selectedClassRank} 名` : '—'}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500">学校排名</p>
+                      <p className="text-lg font-semibold text-gray-900 mt-1">
+                        {selectedSchoolRank > 0 ? `第 ${selectedSchoolRank} 名` : '—'}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-500">与上次变化</p>
+                      <div className="flex items-center justify-center mt-1">
+                        {!hasPrev ? (
+                          <span className="text-sm text-gray-400">首次考试</span>
+                        ) : totalDiff > 0 ? (
+                          <span className="flex items-center gap-1 text-emerald-600">
+                            <TrendingUp className="w-4 h-4" />
+                            <span className="text-sm font-medium">+{totalDiff}</span>
+                          </span>
+                        ) : totalDiff < 0 ? (
+                          <span className="flex items-center gap-1 text-red-500">
+                            <TrendingDown className="w-4 h-4" />
+                            <span className="text-sm font-medium">{totalDiff}</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-gray-400">
+                            <Minus className="w-4 h-4" />
+                            <span className="text-sm font-medium">持平</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-900 mb-3">各科成绩</h4>
+                    <div className="space-y-2">
+                      {SUBJECTS.map((subject) => {
+                        const current = selectedExamScores.find((s) => s.subject === subject);
+                        if (!current) return null;
+                        const prev = prevExamScores.find((s) => s.subject === subject);
+                        const diff = prev ? current.score - prev.score : null;
+                        const fullScore = getFullScore(subject);
+                        const rate = Math.round((current.score / fullScore) * 100);
+                        return (
+                          <div key={subject} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-700">{subject}</span>
+                              {diff !== null && diff !== undefined && (
+                                <span
+                                  className={`text-xs font-medium ${
+                                    diff > 0
+                                      ? 'text-emerald-600'
+                                      : diff < 0
+                                      ? 'text-red-500'
+                                      : 'text-gray-400'
+                                  }`}
+                                >
+                                  {diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ 持平'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-400">满分 {fullScore}</span>
+                              <span className="text-sm font-medium text-gray-900">{current.score} 分</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                rate >= 85 ? 'bg-emerald-50 text-emerald-600' :
+                                rate >= 60 ? 'bg-amber-50 text-amber-600' :
+                                'bg-red-50 text-red-500'
+                              }`}>
+                                {rate}%
                               </span>
-                            )}
+                              {current.subjectRank > 0 && (
+                                <span className="text-xs text-gray-400">班内第 {current.subjectRank} 名</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                ) : (
-                  <div className="py-6 text-center text-sm text-gray-400">
-                    暂无成绩数据，请通过 Excel 导入考试成绩
-                  </div>
-                )}
-              </div>
+                </>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-2">
