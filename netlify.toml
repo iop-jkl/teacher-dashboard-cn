@@ -1,3 +1,13 @@
+<<<<<<< HEAD
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+=======
 redirectsOrigin = "config"
 plugins = []
 headers = []
@@ -37,3 +47,4 @@ force = false
   [redirects.conditions]
 
   [redirects.headers]
+>>>>>>> 478e00dbf7050d8777257f9d9521c5591732d7d3
