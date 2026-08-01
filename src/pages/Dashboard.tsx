@@ -9,7 +9,6 @@ import StudentTable from '@/components/StudentTable';
 import TopStudentsRanking from '@/components/TopStudentsRanking';
 import QuickActions from '@/components/QuickActions';
 import AddReminderModal from '@/components/AddReminderModal';
-import StatsOverview from '@/components/StatsOverview';
 import StudentProgressBoard from '@/components/StudentProgressBoard';
 import ExcelImportButton from '@/components/ExcelImportButton';
 import ToastContainer from '@/components/ToastContainer';
@@ -256,8 +255,6 @@ export default function Dashboard() {
         </header>
 
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-          <StatsOverview />
-
           <QuickActions
             onToast={(msg) => showToast(msg, 'info')}
             onAddReminder={() => setShowAddReminder(true)}
