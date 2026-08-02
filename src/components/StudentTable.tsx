@@ -5,7 +5,13 @@ import type { Student, Score } from '@/types';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
-import { subjectScore, scoreValue } from '@/lib/scoreUtils';
+import {
+  buildScoreIndex,
+  totalForIndexed,
+  studentScoreFromIndex,
+  studentSubjectTotals,
+  subjectScore,
+} from '@/lib/scoreUtils';
 import { ALL_SUBJECTS } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
@@ -34,17 +40,24 @@ export default function StudentTable({
   >({});
 
   const activeExamId = examId || exams[exams.length - 1]?.id || '';
+  const index = useMemo(() => buildScoreIndex(scores), [scores]);
 
   const rows = useMemo(() => {
     return students
       .map((student) => {
-        const totalRow = subjectScore(scores, student.idCard, activeExamId, '总分');
-        const total = totalRow ? (scoreValue(totalRow) ?? 0) : 0;
+        const totalRow = studentScoreFromIndex(
+          index,
+          student.idCard,
+          activeExamId,
+          '总分',
+        );
+        const total = activeExamId
+          ? totalForIndexed(index, student.idCard, activeExamId)
+          : 0;
+        const totals = studentSubjectTotals(index, student.idCard, activeExamId);
         const subjectTotals: Record<string, number | null> = {};
         for (const subject of ['语文', '数学', '英语', ...student.selectedSubjects]) {
-          subjectTotals[subject] = scoreValue(
-            subjectScore(scores, student.idCard, activeExamId, subject),
-          );
+          subjectTotals[subject] = totals.get(subject) ?? null;
         }
         const value =
           sortKey === '总分' ? total : subjectTotals[sortKey] ?? -Infinity;
@@ -58,7 +71,7 @@ export default function StudentTable({
         };
       })
       .sort((a, b) => b.value - a.value);
-  }, [students, scores, activeExamId, sortKey]);
+  }, [students, index, activeExamId, sortKey]);
 
   const openEdit = (student: Student) => {
     const list = ['语文', '数学', '英语', ...student.selectedSubjects];

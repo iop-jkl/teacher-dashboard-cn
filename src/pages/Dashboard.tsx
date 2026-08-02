@@ -15,7 +15,11 @@ import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 import { ALL_SUBJECTS } from '@/data/mockData';
-import { subjectScore, scoreValue, totalFor } from '@/lib/scoreUtils';
+import {
+  buildScoreIndex,
+  buildExamValueMap,
+  totalForIndexed,
+} from '@/lib/scoreUtils';
 
 export default function Dashboard() {
   const {
@@ -70,19 +74,21 @@ export default function Dashboard() {
     return isAdmin ? [0, ...list] : list;
   }, [students, isAdmin]);
 
+  const scoreIndex = useMemo(() => buildScoreIndex(scores), [scores]);
+  const examValueMap = useMemo(
+    () => (latestExam ? buildExamValueMap(scores, latestExam.id) : new Map()),
+    [scores, latestExam],
+  );
+
   const examAverageData = useMemo(() => {
     if (!latestExam) return [];
     const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
     for (const subject of ALL_SUBJECTS) {
       const values = classStudents
-        .map((s) =>
-          scoreValue(subjectScore(scores, s.idCard, latestExam.id, subject)),
-        )
+        .map((s) => examValueMap.get(`${s.idCard}\u0000${subject}`))
         .filter((v): v is number => v != null && v > 0);
       const allValues = students
-        .map((s) =>
-          scoreValue(subjectScore(scores, s.idCard, latestExam.id, subject)),
-        )
+        .map((s) => examValueMap.get(`${s.idCard}\u0000${subject}`))
         .filter((v): v is number => v != null && v > 0);
       if (values.length === 0) continue;
       const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -97,13 +103,13 @@ export default function Dashboard() {
       });
     }
     return result;
-  }, [classStudents, students, scores, latestExam]);
+  }, [classStudents, students, examValueMap, latestExam]);
 
   const progressRankings = useMemo(() => {
     if (!latestExam || !prevExam) return [];
     return classStudents.map((student) => {
-      const total = totalFor(scores, student.idCard, latestExam.id);
-      const prevTotal = totalFor(scores, student.idCard, prevExam.id);
+      const total = totalForIndexed(scoreIndex, student.idCard, latestExam.id);
+      const prevTotal = totalForIndexed(scoreIndex, student.idCard, prevExam.id);
       return {
         id: student.idCard,
         name: student.name,
@@ -111,7 +117,7 @@ export default function Dashboard() {
         diff: Math.round((total - prevTotal) * 100) / 100,
       };
     });
-  }, [classStudents, scores, latestExam, prevExam]);
+  }, [classStudents, scoreIndex, latestExam, prevExam]);
 
   const topImprovements = useMemo(
     () => [...progressRankings].sort((a, b) => b.diff - a.diff).slice(0, 5),

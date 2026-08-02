@@ -16,7 +16,12 @@ import ExcelExportButton from '@/components/ExcelExportButton';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
-import { rankClassStudents, subjectScore, scoreValue } from '@/lib/scoreUtils';
+import {
+  buildScoreIndex,
+  rankClassStudentsIndexed,
+  subjectScore,
+  scoreValue,
+} from '@/lib/scoreUtils';
 import type { Student } from '@/types';
 
 const SELECTABLE = ['政治', '历史', '地理', '物理', '化学', '生物'];
@@ -94,11 +99,17 @@ export default function StudentsPage() {
   );
 
   const latestExam = exams[exams.length - 1];
+  const scoreIndex = useMemo(() => buildScoreIndex(scores), [scores]);
 
   const ranked = useMemo(() => {
     if (!latestExam) return [];
-    return rankClassStudents(classStudents, scores, latestExam.id, activeClass);
-  }, [classStudents, scores, latestExam, activeClass]);
+    return rankClassStudentsIndexed(
+      students,
+      scoreIndex,
+      latestExam.id,
+      activeClass,
+    );
+  }, [students, scoreIndex, latestExam, activeClass]);
 
   const filtered = useMemo(() => {
     let result = ranked;
@@ -383,13 +394,9 @@ export default function StudentsPage() {
                         className="accent-[#2dd4bf]"
                       />
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">排名</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">学生</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">身份证号</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">班级</th>
-                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">总分赋分</th>
-                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">班名次</th>
-                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">校名次</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">选科</th>
                     <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">操作</th>
                   </tr>
@@ -408,11 +415,6 @@ export default function StudentsPage() {
                           className="accent-[#2dd4bf]"
                         />
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-50 text-gray-500">
-                          {entry.classRank || filtered.indexOf(entry) + 1}
-                        </span>
-                      </td>
                       <td className="px-5 py-3">
                         <button
                           onClick={() => setSelectedStudent(entry.student)}
@@ -428,15 +430,6 @@ export default function StudentsPage() {
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">{entry.student.idCard}</td>
                       <td className="px-5 py-3 text-sm text-gray-600">{entry.student.classNo}班</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-[#1e3a5f]">
-                        {entry.total.toFixed(2)}
-                      </td>
-                      <td className="px-5 py-3 text-right text-sm text-gray-600">
-                        {entry.classRank || '-'}
-                      </td>
-                      <td className="px-5 py-3 text-right text-sm text-gray-600">
-                        {entry.schoolRank || '-'}
-                      </td>
                       <td className="px-5 py-3">
                         <div className="flex gap-1">
                           {entry.student.selectedSubjects.map((s) => (
@@ -496,8 +489,7 @@ export default function StudentsPage() {
                       {entry.student.name}
                     </span>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {entry.student.classNo}班 · 总分 {entry.total.toFixed(2)} · 班第
-                      {entry.classRank || '-'}名
+                      {entry.student.classNo}班 · {entry.student.idCard}
                     </p>
                   </button>
                   <button

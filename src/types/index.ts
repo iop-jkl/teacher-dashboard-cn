@@ -5,6 +5,7 @@ export interface Reminder {
   type: 'exam' | 'activity' | 'todo';
   dueDate: string;
   completed: boolean;
+  owner?: string;
 }
 
 export interface Exam {

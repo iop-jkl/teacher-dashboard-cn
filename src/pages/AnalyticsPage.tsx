@@ -13,11 +13,15 @@ import {
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
-import StudentTable from '@/components/StudentTable';
+import ScoreRankTable from '@/components/ScoreRankTable';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 import { ALL_SUBJECTS } from '@/data/mockData';
-import { subjectScore, scoreValue, totalFor } from '@/lib/scoreUtils';
+import {
+  buildScoreIndex,
+  buildExamValueMap,
+  totalForIndexed,
+} from '@/lib/scoreUtils';
 
 type ViewType = 'trend' | 'ranking';
 
@@ -56,12 +60,18 @@ export default function AnalyticsPage() {
     [students, activeClass],
   );
 
+  const scoreIndex = useMemo(() => buildScoreIndex(scores), [scores]);
+  const examValueMap = useMemo(
+    () => (activeExam ? buildExamValueMap(scores, activeExam.id) : new Map()),
+    [scores, activeExam],
+  );
+
   const historyData = useMemo(() => {
     return exams
       .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
       .map((exam) => {
         const totals = classStudents
-          .map((s) => totalFor(scores, s.idCard, exam.id))
+          .map((s) => totalForIndexed(scoreIndex, s.idCard, exam.id))
           .filter((t) => t > 0);
         const avg =
           totals.length > 0
@@ -69,16 +79,14 @@ export default function AnalyticsPage() {
             : 0;
         return { name: exam.name, 平均分: Math.round(avg * 100) / 100 };
       });
-  }, [exams, classStudents, scores]);
+  }, [exams, classStudents, scoreIndex]);
 
   const classAvgData = useMemo(() => {
     if (!activeExam) return [];
     const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
     for (const subject of ALL_SUBJECTS) {
       const values = classStudents
-        .map((s) =>
-          scoreValue(subjectScore(scores, s.idCard, activeExam.id, subject)),
-        )
+        .map((s) => examValueMap.get(`${s.idCard}\u0000${subject}`))
         .filter((v): v is number => v != null && v > 0);
       if (values.length === 0) continue;
       const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -89,15 +97,15 @@ export default function AnalyticsPage() {
       });
     }
     return result;
-  }, [classStudents, scores, activeExam]);
+  }, [classStudents, examValueMap, activeExam]);
 
   const progressRankings = useMemo(() => {
     if (examIndex < 1) return [];
     const prevExam = exams[examIndex - 1];
     const curExam = exams[examIndex];
     return classStudents.map((student) => {
-      const total = totalFor(scores, student.idCard, curExam.id);
-      const prevTotal = totalFor(scores, student.idCard, prevExam.id);
+      const total = totalForIndexed(scoreIndex, student.idCard, curExam.id);
+      const prevTotal = totalForIndexed(scoreIndex, student.idCard, prevExam.id);
       return {
         id: student.idCard,
         name: student.name,
@@ -105,7 +113,7 @@ export default function AnalyticsPage() {
         diff: Math.round((total - prevTotal) * 100) / 100,
       };
     });
-  }, [classStudents, scores, exams, examIndex]);
+  }, [classStudents, scoreIndex, exams, examIndex]);
 
   const topImprovements = useMemo(
     () =>
@@ -333,7 +341,7 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              <StudentTable
+              <ScoreRankTable
                 students={classStudents}
                 scores={scores}
                 examId={activeExam?.id}

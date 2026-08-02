@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Reminder, Exam, Student, Score, ClassTeacher } from '@/types';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { useAuthStore } from '@/store/useAuth';
 import { recomputeClassRanks, recomputeTotalRows } from '@/lib/scoreUtils';
 
 export type PageKey =
@@ -17,6 +18,7 @@ export interface ScheduleEvent {
   time: string;
   location: string;
   type: 'exam' | 'meeting' | 'activity' | 'deadline';
+  owner?: string;
 }
 
 const initialScheduleEvents: ScheduleEvent[] = [
@@ -117,6 +119,7 @@ function scheduleToRow(e: ScheduleEvent): AnyRow {
     time: e.time,
     location: e.location,
     type: e.type,
+    owner: e.owner ?? '',
   };
 }
 
@@ -128,6 +131,7 @@ function rowToSchedule(r: AnyRow): ScheduleEvent {
     time: String(r.time ?? ''),
     location: String(r.location ?? ''),
     type: (r.type as ScheduleEvent['type']) ?? 'activity',
+    owner: r.owner ? String(r.owner) : '',
   };
 }
 
@@ -139,6 +143,7 @@ function reminderToRow(r: Reminder): AnyRow {
     type: r.type,
     due_date: r.dueDate,
     completed: r.completed,
+    owner: r.owner ?? '',
   };
 }
 
@@ -150,7 +155,19 @@ function rowToReminder(r: AnyRow): Reminder {
     type: (r.type as Reminder['type']) ?? 'todo',
     dueDate: String(r.due_date ?? ''),
     completed: Boolean(r.completed),
+    owner: r.owner ? String(r.owner) : '',
   };
+}
+
+function visibleRows<T extends { owner?: string }>(
+  rows: T[],
+  session: { role: string; classNo: number } | null,
+): T[] {
+  if (!session || session.role === 'admin') return rows;
+  const mine = String(session.classNo);
+  return rows.filter(
+    (r) => !r.owner || r.owner === 'admin' || r.owner === mine,
+  );
 }
 
 async function upsertStudents(rows: Student[]) {
@@ -358,9 +375,14 @@ export const useStore = create<Store>((set, get) => ({
         const students = stuRows.map((r) => rowToStudent(r));
         const scores = scoRows.map((r) => rowToScore(r));
         const exams = (ex.data ?? []).map((r) => rowToExam(r as AnyRow));
-        const reminders = (rem.data ?? []).map((r) => rowToReminder(r as AnyRow));
-        const scheduleEvents = (sch.data ?? []).map((r) =>
-          rowToSchedule(r as AnyRow),
+        const session = useAuthStore.getState().session;
+        const reminders = visibleRows(
+          (rem.data ?? []).map((r) => rowToReminder(r as AnyRow)),
+          session,
+        );
+        const scheduleEvents = visibleRows(
+          (sch.data ?? []).map((r) => rowToSchedule(r as AnyRow)),
+          session,
         );
         const classTeachers = (teachers.data ?? []).map((r) =>
           rowToTeacher(r as AnyRow),
@@ -445,7 +467,12 @@ export const useStore = create<Store>((set, get) => ({
     if (toggled) upsertReminders([toggled]);
   },
   addReminder: (r) => {
-    const newReminder: Reminder = { ...r, id: Date.now().toString() };
+    const session = useAuthStore.getState().session;
+    const newReminder: Reminder = {
+      ...r,
+      id: Date.now().toString(),
+      owner: session?.role === 'admin' ? 'admin' : String(session?.classNo ?? ''),
+    };
     set((state) => ({ reminders: [...state.reminders, newReminder] }));
     upsertReminders([newReminder]);
   },
@@ -567,7 +594,13 @@ export const useStore = create<Store>((set, get) => ({
 
   scheduleEvents: [...initialScheduleEvents],
   addScheduleEvent: (e) => {
-    const newEvent: ScheduleEvent = { ...e, id: Date.now().toString() };
+    const session = useAuthStore.getState().session;
+    const newEvent: ScheduleEvent = {
+      ...e,
+      id: Date.now().toString(),
+      owner:
+        session?.role === 'admin' ? 'admin' : String(session?.classNo ?? ''),
+    };
     set((state) => ({ scheduleEvents: [...state.scheduleEvents, newEvent] }));
     upsertSchedule([newEvent]);
   },

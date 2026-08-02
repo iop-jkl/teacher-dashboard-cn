@@ -26,6 +26,14 @@ async function gotoLogin(page) {
     timeout: 45000,
   });
   await page.waitForSelector('#username', { timeout: 30000 });
+  const placeholder = await page.locator('#username').getAttribute('placeholder');
+  if (!placeholder || !placeholder.includes('班级号')) {
+    throw new Error('登录提示应包含班级号');
+  }
+  const optionCards = await page.locator('text=管理员').count();
+  if (optionCards !== 0) {
+    throw new Error('登录界面不应显示管理员/班主任选项卡片');
+  }
 }
 
 // 管理员登录
@@ -56,6 +64,9 @@ async function gotoLogin(page) {
   console.log('students rows:', rowCount);
   console.log('first row:', firstRowText.replace(/\s+/g, ' ').slice(0, 120));
   if (!firstRowText.includes('1班')) throw new Error('学生列表应显示班级');
+  if (firstRowText.includes('684.15')) {
+    throw new Error('学生管理列表不应显示成绩');
+  }
   await page.locator('header select').selectOption('0');
   await page.waitForSelector('text=共 4027 名学生', { timeout: 60000 });
   const allFirstRow = await page.locator('table tbody tr').first().innerText();
@@ -71,6 +82,23 @@ async function gotoLogin(page) {
   const adminCanEdit = await page.locator('text=编辑成绩').count();
   console.log('admin edit score button:', adminCanEdit);
   await page.screenshot({ path: '.import-data/smoke-admin-students.png', fullPage: false });
+  await page.locator('button:has-text("关闭")').first().click();
+
+  // 成绩分析：显示全部成绩与排名
+  await page.locator('aside').getByText('成绩分析', { exact: true }).click();
+  await page.waitForURL((url) => url.pathname.endsWith('/analytics'), {
+    timeout: 15000,
+  });
+  await page.locator('button:has-text("学生排名")').click();
+  await page.waitForSelector('text=全部成绩与排名', { timeout: 20000 });
+  const rankTableText = (await page.locator('table').first().innerText()).replace(
+    /\s+/g,
+    ' ',
+  );
+  console.log('rank table sample:', rankTableText.slice(0, 160));
+  if (!rankTableText.includes('语文') || !rankTableText.includes('班')) {
+    throw new Error('成绩分析应显示全部成绩及排名');
+  }
 
   await context.close();
 }

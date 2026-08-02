@@ -9,6 +9,74 @@ export function scoreValue(s: Score | undefined): number | null {
   return s.rawScore;
 }
 
+export function buildScoreIndex(scores: Score[]): Map<string, Score[]> {
+  const map = new Map<string, Score[]>();
+  for (const s of scores) {
+    const arr = map.get(s.studentId);
+    if (arr) {
+      arr.push(s);
+    } else {
+      map.set(s.studentId, [s]);
+    }
+  }
+  return map;
+}
+
+export function studentScoreFromIndex(
+  index: Map<string, Score[]>,
+  studentId: string,
+  examId: string,
+  subject: string,
+): Score | undefined {
+  return index
+    .get(studentId)
+    ?.find((s) => s.examId === examId && s.subject === subject);
+}
+
+export function studentSubjectTotals(
+  index: Map<string, Score[]>,
+  studentId: string,
+  examId: string,
+): Map<string, number | null> {
+  const map = new Map<string, number | null>();
+  for (const s of index.get(studentId) ?? []) {
+    if (s.examId !== examId || s.subject === '总分') continue;
+    map.set(s.subject, scoreValue(s));
+  }
+  return map;
+}
+
+export function totalForIndexed(
+  index: Map<string, Score[]>,
+  studentId: string,
+  examId: string,
+): number {
+  const rows = index.get(studentId) ?? [];
+  const totalRow = rows.find(
+    (s) => s.examId === examId && s.subject === '总分',
+  );
+  const total = totalRow ? scoreValue(totalRow) : null;
+  if (total !== null) return total;
+  let sum = 0;
+  for (const s of rows) {
+    if (s.examId !== examId || s.subject === '总分') continue;
+    sum += scoreValue(s) ?? 0;
+  }
+  return sum;
+}
+
+export function buildExamValueMap(
+  scores: Score[],
+  examId: string,
+): Map<string, number | null> {
+  const map = new Map<string, number | null>();
+  for (const s of scores) {
+    if (s.examId !== examId || s.subject === '总分') continue;
+    map.set(`${s.studentId}\u0000${s.subject}`, scoreValue(s));
+  }
+  return map;
+}
+
 export function subjectScore(
   scores: Score[],
   studentId: string,
@@ -68,18 +136,36 @@ export function rankClassStudents(
   examId: string,
   classNo: number,
 ): RankingEntry[] {
+  return rankClassStudentsIndexed(
+    students,
+    buildScoreIndex(scores),
+    examId,
+    classNo,
+  );
+}
+
+export function rankClassStudentsIndexed(
+  students: Student[],
+  index: Map<string, Score[]>,
+  examId: string,
+  classNo: number,
+): RankingEntry[] {
   const list =
     classNo === 0
       ? [...students]
       : students.filter((s) => s.classNo === classNo);
   const entries: RankingEntry[] = list.map((student) => {
-    const total = totalFor(scores, student.idCard, examId);
-    const totalRow = subjectScore(scores, student.idCard, examId, '总分');
+    const rows = index.get(student.idCard) ?? [];
+    const total = totalForIndexed(index, student.idCard, examId);
+    const totalRow = rows.find(
+      (s) => s.examId === examId && s.subject === '总分',
+    );
     const subjectTotals: Record<string, number | null> = {};
     for (const subject of studentSubjects(student)) {
-      subjectTotals[subject] = scoreValue(
-        subjectScore(scores, student.idCard, examId, subject),
+      const row = rows.find(
+        (s) => s.examId === examId && s.subject === subject,
       );
+      subjectTotals[subject] = row ? scoreValue(row) : null;
     }
     return {
       student,
