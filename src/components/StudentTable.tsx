@@ -126,6 +126,7 @@ export default function StudentTable({
               <th className="px-4 py-3 text-left font-medium w-14">排名</th>
               <th className="px-4 py-3 text-left font-medium">学生</th>
               <th className="px-4 py-3 text-left font-medium">身份证号</th>
+              <th className="px-4 py-3 text-left font-medium">班级</th>
               <th className="px-4 py-3 text-right font-medium">总分赋分</th>
               <th className="px-4 py-3 text-right font-medium">班名次</th>
               <th className="px-4 py-3 text-right font-medium">校名次</th>
@@ -167,6 +168,7 @@ export default function StudentTable({
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">{row.student.idCard}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{row.student.classNo}班</td>
                 <td className="px-4 py-3 text-right text-sm font-semibold text-[#1e3a5f]">
                   {row.total.toFixed(2)}
                 </td>

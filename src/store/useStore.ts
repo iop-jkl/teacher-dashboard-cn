@@ -373,7 +373,7 @@ export const useStore = create<Store>((set, get) => ({
           reminders: reminders.length ? reminders : [],
           scheduleEvents: scheduleEvents.length ? scheduleEvents : [],
           classTeachers,
-          activeClass: get().activeClass || 1,
+          activeClass: get().activeClass,
           dataLoaded: true,
           supabaseError: null,
         });
@@ -578,7 +578,7 @@ export const useStore = create<Store>((set, get) => ({
     deleteScheduleRow(id);
   },
 
-  activeClass: 1,
+  activeClass: 0,
   setActiveClass: (cls) => set({ activeClass: cls }),
 
   sidebarOpen: false,

@@ -38,21 +38,28 @@ async function gotoLogin(page) {
   await page.waitForURL((url) => url.pathname.endsWith('/') || url.pathname === '/teacher-dashboard-cn', { timeout: 15000 });
   await page.waitForSelector('text=工作台', { timeout: 15000 });
   console.log('admin login ok');
+  const dashHeader = (await page.locator('header').innerText()).replace(/\s+/g, ' ');
+  console.log('dashboard header:', dashHeader.slice(0, 80));
+  if (!dashHeader.includes('全部班级')) throw new Error('管理员工作台默认应为全部班级');
 
   await page.locator('aside').getByText('学生管理', { exact: true }).click();
   await page.waitForURL((url) => url.pathname.endsWith('/students'), {
     timeout: 15000,
   });
+  await page.waitForSelector('text=共 4027 名学生', { timeout: 20000 });
+  console.log('all classes count ok');
+  await page.locator('header select').selectOption('1');
+  await page.waitForSelector('text=共 47 名学生', { timeout: 20000 });
   await page.waitForSelector('table tbody tr', { timeout: 20000 });
   const rowCount = await page.locator('table tbody tr').count();
   const firstRowText = await page.locator('table tbody tr').first().innerText();
   console.log('students rows:', rowCount);
   console.log('first row:', firstRowText.replace(/\s+/g, ' ').slice(0, 120));
-
-  // 管理员：切换到全部班级
+  if (!firstRowText.includes('1班')) throw new Error('学生列表应显示班级');
   await page.locator('header select').selectOption('0');
   await page.waitForSelector('text=共 4027 名学生', { timeout: 20000 });
-  console.log('all classes count ok');
+  const allFirstRow = await page.locator('table tbody tr').first().innerText();
+  if (!allFirstRow.includes('班')) throw new Error('全部学生视图应显示班级');
   await page.locator('header select').selectOption('1');
   await page.waitForSelector('text=共 47 名学生', { timeout: 20000 });
 
@@ -79,6 +86,9 @@ async function gotoLogin(page) {
   await page.waitForSelector('text=工作台', { timeout: 15000 });
   const headerText = await page.locator('header').innerText();
   console.log('teacher header:', headerText.replace(/\s+/g, ' ').slice(0, 80));
+  const teacherSelects = await page.locator('header select').count();
+  console.log('teacher class selects:', teacherSelects);
+  if (teacherSelects !== 0) throw new Error('班主任工作台不应有班级切换');
   await page.locator('aside').getByText('学生管理', { exact: true }).click();
   await page.waitForSelector('table tbody tr', { timeout: 20000 });
   await page.locator('table tbody tr').first().locator('button').first().click();

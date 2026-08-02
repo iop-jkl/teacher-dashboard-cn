@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Bell, Search, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
@@ -12,6 +12,7 @@ import AddReminderModal from '@/components/AddReminderModal';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import ToastContainer from '@/components/ToastContainer';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 import { ALL_SUBJECTS } from '@/data/mockData';
 import { subjectScore, scoreValue, totalFor } from '@/lib/scoreUtils';
@@ -30,7 +31,16 @@ export default function Dashboard() {
     examList,
     currentExamIndex,
     setCurrentExamIndex,
+    setActiveClass,
   } = useStore();
+  const session = useAuthStore((s) => s.session);
+  const isAdmin = session?.role === 'admin';
+
+  useEffect(() => {
+    if (!isAdmin && session?.classNo) {
+      setActiveClass(session.classNo);
+    }
+  }, [isAdmin, session?.classNo, setActiveClass]);
 
   const showToast = useToastStore((s) => s.showToast);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,9 +56,19 @@ export default function Dashboard() {
   const prevExam = exams.find((e) => e.name === prevExamName);
 
   const classStudents = useMemo(
-    () => students.filter((s) => s.classNo === activeClass),
+    () =>
+      activeClass === 0
+        ? students
+        : students.filter((s) => s.classNo === activeClass),
     [students, activeClass],
   );
+
+  const classNoList = useMemo(() => {
+    const set = new Set<number>();
+    for (const s of students) set.add(s.classNo);
+    const list = [...set].sort((a, b) => a - b);
+    return isAdmin ? [0, ...list] : list;
+  }, [students, isAdmin]);
 
   const examAverageData = useMemo(() => {
     if (!latestExam) return [];
@@ -144,12 +164,28 @@ export default function Dashboard() {
                     weekday: 'long',
                   })}
                   {' · '}
-                  <span className="text-[#2dd4bf]">{activeClass}班</span>
+                  <span className="text-[#2dd4bf]">
+                    {activeClass === 0 ? '全部班级' : `${activeClass}班`}
+                  </span>
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4">
+              {isAdmin && (
+                <select
+                  value={activeClass}
+                  onChange={(e) => setActiveClass(Number(e.target.value))}
+                  className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
+                  aria-label="切换班级"
+                >
+                  {classNoList.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls === 0 ? '全部班级' : `${cls}班`}
+                    </option>
+                  ))}
+                </select>
+              )}
               <div className="relative hidden md:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input

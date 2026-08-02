@@ -386,6 +386,7 @@ export default function StudentsPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">排名</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">学生</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">身份证号</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">班级</th>
                     <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">总分赋分</th>
                     <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">班名次</th>
                     <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">校名次</th>
@@ -426,6 +427,7 @@ export default function StudentsPage() {
                         </button>
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">{entry.student.idCard}</td>
+                      <td className="px-5 py-3 text-sm text-gray-600">{entry.student.classNo}班</td>
                       <td className="px-5 py-3 text-right text-sm font-semibold text-[#1e3a5f]">
                         {entry.total.toFixed(2)}
                       </td>
@@ -494,7 +496,8 @@ export default function StudentsPage() {
                       {entry.student.name}
                     </span>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      总分 {entry.total.toFixed(2)} · 班第{entry.classRank || '-'}名
+                      {entry.student.classNo}班 · 总分 {entry.total.toFixed(2)} · 班第
+                      {entry.classRank || '-'}名
                     </p>
                   </button>
                   <button
