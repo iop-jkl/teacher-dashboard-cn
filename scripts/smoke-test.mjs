@@ -102,9 +102,7 @@ async function gotoLogin(page) {
 
   // 快捷操作录入成绩：先填考试时间，再解析 Excel 预览
   await page.locator('aside').getByText('工作台', { exact: true }).click();
-  await page.waitForURL((url) => url.pathname === '/' || url.pathname.endsWith('/'), {
-    timeout: 15000,
-  });
+  await page.waitForSelector('text=快捷操作', { timeout: 15000 });
   await page.locator('button:has-text("录入成绩")').first().click();
   await page.waitForSelector('input[type="date"]', { timeout: 10000 });
   await page.locator('input[type="file"]').setInputFiles(
@@ -140,9 +138,7 @@ async function gotoLogin(page) {
   if (teacherCanEdit !== 0) throw new Error('班主任不应看到编辑成绩按钮');
   await page.locator('button:has-text("关闭")').first().click();
   await page.locator('aside').getByText('工作台', { exact: true }).click();
-  await page.waitForURL((url) => url.pathname === '/' || url.pathname.endsWith('/'), {
-    timeout: 15000,
-  });
+  await page.waitForSelector('text=快捷操作', { timeout: 15000 });
   await page.locator('button:has-text("录入成绩")').first().click();
   await page.waitForSelector('input[type="date"]', { timeout: 10000 });
   console.log('teacher import modal ok');
