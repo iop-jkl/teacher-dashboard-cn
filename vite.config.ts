@@ -31,7 +31,7 @@ export default defineConfig({
     tsconfigPaths(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'pwa-icon.svg'],
+      includeAssets: ['favicon.jpg', 'pwa-icon.svg'],
       manifest: {
         name: '班主任工作台',
         short_name: '班主任',
@@ -65,7 +65,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,woff2}'],
         navigateFallback: '/index.html',
         runtimeCaching: [
           {
