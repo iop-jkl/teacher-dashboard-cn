@@ -100,17 +100,18 @@ async function gotoLogin(page) {
     throw new Error('成绩分析应显示全部成绩及排名');
   }
 
-  // 成绩录入：管理员可打开录入弹窗
-  await page.locator('aside').getByText('成绩录入', { exact: true }).click();
-  await page.waitForURL((url) => url.pathname.endsWith('/score-entry'), {
+  // 快捷操作录入成绩：先填考试时间，再解析 Excel 预览
+  await page.locator('aside').getByText('工作台', { exact: true }).click();
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname.endsWith('/'), {
     timeout: 15000,
   });
-  await page.waitForSelector('table tbody tr', { timeout: 20000 });
   await page.locator('button:has-text("录入成绩")').first().click();
-  await page.waitForSelector('input[placeholder="原始分"]', { timeout: 10000 });
-  const entryModalSave = await page.locator('button:has-text("保存")').count();
-  console.log('admin entry modal save:', entryModalSave);
-  if (entryModalSave === 0) throw new Error('成绩录入弹窗应可保存');
+  await page.waitForSelector('input[type="date"]', { timeout: 10000 });
+  await page.locator('input[type="file"]').setInputFiles(
+    'C:\\Users\\lenovo\\Desktop\\期末考试.xls',
+  );
+  await page.waitForSelector('text=学生 4027 人', { timeout: 60000 });
+  console.log('excel parse preview ok');
   await page.locator('button:has-text("取消")').first().click();
 
   await context.close();
@@ -136,16 +137,16 @@ async function gotoLogin(page) {
   await page.waitForSelector('text=家长信息', { timeout: 10000 });
   const teacherCanEdit = await page.locator('text=编辑成绩').count();
   console.log('teacher edit score button:', teacherCanEdit);
-  if (teacherCanEdit !== 1) throw new Error('班主任应可编辑本班成绩');
+  if (teacherCanEdit !== 0) throw new Error('班主任不应看到编辑成绩按钮');
   await page.locator('button:has-text("关闭")').first().click();
-  await page.locator('aside').getByText('成绩录入', { exact: true }).click();
-  await page.waitForURL((url) => url.pathname.endsWith('/score-entry'), {
+  await page.locator('aside').getByText('工作台', { exact: true }).click();
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname.endsWith('/'), {
     timeout: 15000,
   });
-  await page.waitForSelector('table tbody tr', { timeout: 20000 });
-  const teacherEntrySelects = await page.locator('header select').count();
-  console.log('teacher entry selects:', teacherEntrySelects);
-  if (teacherEntrySelects !== 1) throw new Error('班主任成绩录入应只有考试选择');
+  await page.locator('button:has-text("录入成绩")').first().click();
+  await page.waitForSelector('input[type="date"]', { timeout: 10000 });
+  console.log('teacher import modal ok');
+  await page.locator('button:has-text("取消")').first().click();
   await context.close();
 }
 

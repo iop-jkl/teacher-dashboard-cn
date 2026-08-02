@@ -2,7 +2,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
-  FilePlus,
   FileText,
   Calendar,
   Settings,
@@ -25,7 +24,6 @@ const navItems: {
 }[] = [
   { icon: LayoutDashboard, label: '工作台', key: 'dashboard', path: '/' },
   { icon: Users, label: '学生管理', key: 'students', path: '/students' },
-  { icon: FilePlus, label: '成绩录入', key: 'score-entry', path: '/score-entry' },
   { icon: FileText, label: '成绩分析', key: 'analytics', path: '/analytics' },
   { icon: Calendar, label: '日程安排', key: 'schedule', path: '/schedule' },
   { icon: Settings, label: '设置', key: 'settings', path: '/settings' },

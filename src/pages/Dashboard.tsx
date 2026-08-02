@@ -9,6 +9,7 @@ import StudentTable from '@/components/StudentTable';
 import TopStudentsRanking from '@/components/TopStudentsRanking';
 import QuickActions from '@/components/QuickActions';
 import AddReminderModal from '@/components/AddReminderModal';
+import ExcelImportModal from '@/components/ExcelImportModal';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import ToastContainer from '@/components/ToastContainer';
 import { useStore } from '@/store/useStore';
@@ -50,6 +51,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
+  const [showScoreImport, setShowScoreImport] = useState(false);
 
   const pendingCount = reminders.filter((r) => !r.completed).length;
 
@@ -250,6 +252,7 @@ export default function Dashboard() {
           <QuickActions
             onToast={(msg) => showToast(msg, 'info')}
             onAddReminder={() => setShowAddReminder(true)}
+            onAddScoreImport={() => setShowScoreImport(true)}
           />
 
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
@@ -378,6 +381,9 @@ export default function Dashboard() {
       </main>
 
       {showAddReminder && <AddReminderModal onClose={() => setShowAddReminder(false)} />}
+      {showScoreImport && (
+        <ExcelImportModal onClose={() => setShowScoreImport(false)} />
+      )}
     </div>
   );
 }

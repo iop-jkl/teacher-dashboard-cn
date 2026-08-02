@@ -8,7 +8,7 @@ const actions = [
     icon: FilePlus,
     label: '录入成绩',
     color: 'bg-blue-50 text-blue-600',
-    page: 'score-entry' as PageKey,
+    addScoreImport: true,
   },
   {
     icon: Users,
@@ -33,10 +33,28 @@ const actions = [
 interface QuickActionsProps {
   onToast?: (message: string) => void;
   onAddReminder?: () => void;
+  onAddScoreImport?: () => void;
 }
 
-export default function QuickActions({ onAddReminder }: QuickActionsProps) {
+export default function QuickActions({
+  onAddReminder,
+  onAddScoreImport,
+}: QuickActionsProps) {
   const navigate = useNavigate();
+
+  const handleClick = (action: (typeof actions)[number]) => {
+    if ('addScoreImport' in action) {
+      onAddScoreImport?.();
+      return;
+    }
+    if ('addReminder' in action) {
+      onAddReminder?.();
+      return;
+    }
+    if ('page' in action) {
+      navigate(`/${action.page}`);
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5">
@@ -49,13 +67,7 @@ export default function QuickActions({ onAddReminder }: QuickActionsProps) {
         {actions.map((action) => (
           <button
             key={action.label}
-            onClick={() => {
-              if ('addReminder' in action) {
-                onAddReminder?.();
-              } else {
-                navigate(`/${action.page}`);
-              }
-            }}
+            onClick={() => handleClick(action)}
             className={cn(
               'flex flex-col items-center gap-2 p-3 rounded-xl transition-all',
               'hover:bg-gray-50 hover:shadow-sm',

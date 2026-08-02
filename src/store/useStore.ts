@@ -3,11 +3,11 @@ import type { Reminder, Exam, Student, Score, ClassTeacher } from '@/types';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/useAuth';
 import { recomputeClassRanks, recomputeTotalRows } from '@/lib/scoreUtils';
+import type { ParsedExamImport } from '@/utils/excelImport';
 
 export type PageKey =
   | 'dashboard'
   | 'students'
-  | 'score-entry'
   | 'analytics'
   | 'schedule'
   | 'settings';
@@ -214,6 +214,15 @@ async function deleteScoresByStudents(ids: string[]) {
   if (error) console.error('[supabase] delete scores failed:', error.message);
 }
 
+async function deleteScoresByExam(examId: string) {
+  if (!supabase) return;
+  const { error } = await supabase
+    .from('exam_scores')
+    .delete()
+    .eq('exam_id', examId);
+  if (error) console.error('[supabase] delete exam scores failed:', error.message);
+}
+
 async function upsertReminders(rows: Reminder[]) {
   if (!supabase || rows.length === 0) return;
   const { error } = await supabase.from('reminders').upsert(rows.map(reminderToRow));
@@ -319,6 +328,7 @@ interface Store {
   removeStudents: (idCards: string[]) => void;
 
   scores: Score[];
+  importExamFromExcel: (parsed: ParsedExamImport, examDate: string) => void;
   updateExamScores: (
     studentId: string,
     examId: string,
@@ -534,6 +544,50 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   scores: [],
+  importExamFromExcel: (parsed, examDate) => {
+    const existing = get().exams.find((e) => e.name === parsed.examName);
+    const examId = existing?.id || `exam-${Date.now()}`;
+    const exam: Exam = { id: examId, name: parsed.examName, date: examDate };
+    const scoresWithExam = parsed.scores.map((s) => ({ ...s, examId }));
+    const existingStudents = get().students;
+    const byId = new Map(existingStudents.map((s) => [s.idCard, s]));
+    for (const s of parsed.students) {
+      const old = byId.get(s.idCard);
+      byId.set(
+        s.idCard,
+        old
+          ? { ...old, name: s.name, classNo: s.classNo, selectedSubjects: s.selectedSubjects }
+          : s,
+      );
+    }
+    const students = [...byId.values()];
+    const mergedImport = parsed.students.map((s) => {
+      const old = byId.get(s.idCard);
+      return old && old !== s
+        ? { ...old, name: s.name, classNo: s.classNo, selectedSubjects: s.selectedSubjects }
+        : s;
+    });
+    set((state) => {
+      const exams = state.exams.some((e) => e.id === examId)
+        ? state.exams.map((e) => (e.id === examId ? exam : e))
+        : [...state.exams, exam];
+      const examList = sortExamList(exams);
+      return {
+        exams,
+        examList,
+        students,
+        scores: [
+          ...scoresWithExam,
+          ...state.scores.filter((s) => s.examId !== examId),
+        ],
+        currentExamIndex: Math.max(0, examList.length - 1),
+      };
+    });
+    deleteScoresByExam(examId);
+    upsertExams([exam]);
+    upsertStudents(mergedImport);
+    upsertScores(scoresWithExam);
+  },
   updateExamScores: (studentId, examId, updates) => {
     let affected: Score[] = [];
     set((state) => {
