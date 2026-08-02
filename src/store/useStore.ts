@@ -249,19 +249,29 @@ async function fetchAllRows(
 ): Promise<AnyRow[]> {
   if (!supabase) return [];
   const pageSize = 1000;
+  let countQuery = supabase.from(table).select('*', {
+    count: 'exact',
+    head: true,
+  });
+  for (const o of orderBy) {
+    countQuery = countQuery.order(o.column, { ascending: o.ascending });
+  }
+  const { count } = await countQuery.range(0, 0);
+  const total = count ?? 0;
+  const pageCount = Math.ceil(total / pageSize);
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) => {
+      let query = supabase.from(table).select('*');
+      for (const o of orderBy) {
+        query = query.order(o.column, { ascending: o.ascending });
+      }
+      return query.range(i * pageSize, i * pageSize + pageSize - 1);
+    }),
+  );
   const rows: AnyRow[] = [];
-  let start = 0;
-  for (;;) {
-    let query = supabase.from(table).select('*');
-    for (const o of orderBy) {
-      query = query.order(o.column, { ascending: o.ascending });
-    }
-    const { data, error } = await query.range(start, start + pageSize - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    rows.push(...(data as AnyRow[]));
-    if (data.length < pageSize) break;
-    start += pageSize;
+  for (const page of pages) {
+    if (page.error) throw page.error;
+    rows.push(...((page.data ?? []) as AnyRow[]));
   }
   return rows;
 }
