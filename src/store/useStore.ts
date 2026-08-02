@@ -7,6 +7,7 @@ import { recomputeClassRanks, recomputeTotalRows } from '@/lib/scoreUtils';
 export type PageKey =
   | 'dashboard'
   | 'students'
+  | 'score-entry'
   | 'analytics'
   | 'schedule'
   | 'settings';

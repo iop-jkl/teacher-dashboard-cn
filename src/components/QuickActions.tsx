@@ -8,7 +8,7 @@ const actions = [
     icon: FilePlus,
     label: '录入成绩',
     color: 'bg-blue-50 text-blue-600',
-    page: 'students' as PageKey,
+    page: 'score-entry' as PageKey,
   },
   {
     icon: Users,

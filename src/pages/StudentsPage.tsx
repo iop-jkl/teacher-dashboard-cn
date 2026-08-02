@@ -586,14 +586,12 @@ export default function StudentsPage() {
 
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-medium text-gray-900">各科成绩</h4>
-                {isAdmin && (
-                  <button
-                    onClick={() => (editMode ? setEditMode(false) : startEditScores())}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-[#2dd4bf]/30 text-[#2dd4bf] hover:bg-[#2dd4bf]/5 transition-colors"
-                  >
-                    {editMode ? '完成编辑' : '编辑成绩'}
-                  </button>
-                )}
+                <button
+                  onClick={() => (editMode ? setEditMode(false) : startEditScores())}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-[#2dd4bf]/30 text-[#2dd4bf] hover:bg-[#2dd4bf]/5 transition-colors"
+                >
+                  {editMode ? '完成编辑' : '编辑成绩'}
+                </button>
               </div>
 
               <div className="space-y-2">
@@ -618,7 +616,7 @@ export default function StudentsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-3">
-                        {isAdmin && editMode ? (
+                        {editMode ? (
                           <>
                             <input
                               type="number"
@@ -740,7 +738,7 @@ export default function StudentsPage() {
               >
                 查看完整档案
               </button>
-              {isAdmin && editMode && (
+              {editMode && (
                 <button
                   onClick={handleSaveScoreDrafts}
                   className="px-4 py-2 text-sm text-white bg-[#1e3a5f] rounded-lg hover:bg-[#162c48] transition-colors"

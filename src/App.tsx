@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import Dashboard from '@/pages/Dashboard';
 import StudentDetail from '@/pages/StudentDetail';
 import StudentsPage from '@/pages/StudentsPage';
+import ScoreEntryPage from '@/pages/ScoreEntryPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SchedulePage from '@/pages/SchedulePage';
 import SettingsPage from '@/pages/SettingsPage';
@@ -66,6 +67,16 @@ export default function App() {
             <RequireAuth>
               <PageRouter activePage={activePage} setActivePage={setActivePage}>
                 <StudentsPage />
+              </PageRouter>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/score-entry"
+          element={
+            <RequireAuth>
+              <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                <ScoreEntryPage />
               </PageRouter>
             </RequireAuth>
           }
@@ -138,6 +149,7 @@ function PageRouter({
     const path = window.location.pathname;
     const map: Record<string, string> = {
       '/students': 'students',
+      '/score-entry': 'score-entry',
       '/analytics': 'analytics',
       '/schedule': 'schedule',
       '/settings': 'settings',
