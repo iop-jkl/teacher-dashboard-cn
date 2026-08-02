@@ -20,18 +20,29 @@ async function newPage() {
   return { context, page };
 }
 
+async function gotoLogin(page) {
+  await page.goto(`${BASE}/`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 45000,
+  });
+  await page.waitForSelector('#username', { timeout: 30000 });
+}
+
 // 管理员登录
 {
   const { context, page } = await newPage();
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+  await gotoLogin(page);
   await page.fill('#username', 'admin');
   await page.fill('#password', '111');
   await page.click('button[type="submit"]');
-  await page.waitForURL(`${BASE}/`, { timeout: 15000 });
+  await page.waitForURL((url) => url.pathname.endsWith('/') || url.pathname === '/teacher-dashboard-cn', { timeout: 15000 });
   await page.waitForSelector('text=工作台', { timeout: 15000 });
   console.log('admin login ok');
 
-  await page.goto(`${BASE}/students`, { waitUntil: 'networkidle' });
+  await page.locator('aside').getByText('学生管理', { exact: true }).click();
+  await page.waitForURL((url) => url.pathname.endsWith('/students'), {
+    timeout: 15000,
+  });
   await page.waitForSelector('table tbody tr', { timeout: 20000 });
   const rowCount = await page.locator('table tbody tr').count();
   const firstRowText = await page.locator('table tbody tr').first().innerText();
@@ -51,11 +62,11 @@ async function newPage() {
 // 班主任登录（班级号 1）
 {
   const { context, page } = await newPage();
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+  await gotoLogin(page);
   await page.fill('#username', '1');
   await page.fill('#password', '111');
   await page.click('button[type="submit"]');
-  await page.waitForURL(`${BASE}/`, { timeout: 15000 });
+  await page.waitForURL((url) => url.pathname.endsWith('/') || url.pathname === '/teacher-dashboard-cn', { timeout: 15000 });
   await page.waitForSelector('text=工作台', { timeout: 15000 });
   const headerText = await page.locator('header').innerText();
   console.log('teacher header:', headerText.replace(/\s+/g, ' ').slice(0, 80));
