@@ -243,6 +243,29 @@ function sortExamList(exams: Exam[]): string[] {
     .map((e) => e.name);
 }
 
+async function fetchAllRows(
+  table: string,
+  orderBy: { column: string; ascending: boolean }[],
+): Promise<AnyRow[]> {
+  if (!supabase) return [];
+  const pageSize = 1000;
+  const rows: AnyRow[] = [];
+  let start = 0;
+  for (;;) {
+    let query = supabase.from(table).select('*');
+    for (const o of orderBy) {
+      query = query.order(o.column, { ascending: o.ascending });
+    }
+    const { data, error } = await query.range(start, start + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...(data as AnyRow[]));
+    if (data.length < pageSize) break;
+    start += pageSize;
+  }
+  return rows;
+}
+
 let loadPromise: Promise<void> | null = null;
 
 interface Store {
@@ -307,19 +330,23 @@ export const useStore = create<Store>((set, get) => ({
     }
     loadPromise = (async () => {
       try {
-        const [stu, sco, ex, rem, sch, teachers] = await Promise.all([
-          supabase.from('students').select('*'),
-          supabase.from('exam_scores').select('*'),
+        const [stuRows, scoRows, ex, rem, sch, teachers] = await Promise.all([
+          fetchAllRows('students', [{ column: 'id_card', ascending: true }]),
+          fetchAllRows('exam_scores', [
+            { column: 'student_id', ascending: true },
+            { column: 'exam_id', ascending: true },
+            { column: 'subject', ascending: true },
+          ]),
           supabase.from('exams').select('*'),
           supabase.from('reminders').select('*'),
           supabase.from('schedule_events').select('*'),
           supabase.from('class_teachers').select('*').order('class_no'),
         ]);
-        for (const r of [stu, sco, ex, rem, sch, teachers]) {
+        for (const r of [ex, rem, sch, teachers]) {
           if (r.error) throw r.error;
         }
-        const students = (stu.data ?? []).map((r) => rowToStudent(r as AnyRow));
-        const scores = (sco.data ?? []).map((r) => rowToScore(r as AnyRow));
+        const students = stuRows.map((r) => rowToStudent(r));
+        const scores = scoRows.map((r) => rowToScore(r));
         const exams = (ex.data ?? []).map((r) => rowToExam(r as AnyRow));
         const reminders = (rem.data ?? []).map((r) => rowToReminder(r as AnyRow));
         const scheduleEvents = (sch.data ?? []).map((r) =>
