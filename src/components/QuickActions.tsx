@@ -1,9 +1,15 @@
 import { useNavigate } from 'react-router-dom';
-import { Users, BarChart3, BellPlus } from 'lucide-react';
+import { FilePlus, Users, BarChart3, BellPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PageKey } from '@/store/useStore';
 
 const actions = [
+  {
+    icon: FilePlus,
+    label: '录入成绩',
+    color: 'bg-blue-50 text-blue-600',
+    page: 'students' as PageKey,
+  },
   {
     icon: Users,
     label: '学生管理',
@@ -39,7 +45,7 @@ export default function QuickActions({ onAddReminder }: QuickActionsProps) {
         <span className="text-xs text-gray-400">常用功能一键直达</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {actions.map((action) => (
           <button
             key={action.label}

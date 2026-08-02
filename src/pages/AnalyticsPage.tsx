@@ -46,11 +46,13 @@ export default function AnalyticsPage() {
   const classNoList = useMemo(() => {
     const set = new Set<number>();
     for (const s of students) set.add(s.classNo);
-    return [...set].sort((a, b) => a - b);
+    const list = [...set].sort((a, b) => a - b);
+    return isAdmin ? [0, ...list] : list;
   }, [students]);
 
   const classStudents = useMemo(
-    () => students.filter((s) => s.classNo === activeClass),
+    () =>
+      activeClass === 0 ? students : students.filter((s) => s.classNo === activeClass),
     [students, activeClass],
   );
 
@@ -150,7 +152,7 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">成绩分析</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {activeClass}班 · {examName}
+                  {activeClass === 0 ? '全部班级' : `${activeClass}班`} · {examName}
                 </p>
               </div>
             </div>
@@ -164,7 +166,7 @@ export default function AnalyticsPage() {
                 >
                   {classNoList.map((cls) => (
                     <option key={cls} value={cls}>
-                      {cls}班
+                      {cls === 0 ? '全部班级' : `${cls}班`}
                     </option>
                   ))}
                 </select>

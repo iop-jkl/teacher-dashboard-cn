@@ -33,6 +33,7 @@ export default function StudentsPage() {
     removeStudents,
     updateStudent,
     addStudent,
+    updateExamScores,
     activeClass,
     setActiveClass,
   } = useStore();
@@ -51,6 +52,10 @@ export default function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedExam, setSelectedExam] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [scoreDrafts, setScoreDrafts] = useState<
+    Record<string, { rawScore: string; assignedScore: string }>
+  >({});
   const [remarkDraft, setRemarkDraft] = useState('');
   const [parentDraft, setParentDraft] = useState({
     fatherName: '',
@@ -78,11 +83,13 @@ export default function StudentsPage() {
   const classNoList = useMemo(() => {
     const set = new Set<number>();
     for (const s of students) set.add(s.classNo);
-    return [...set].sort((a, b) => a - b);
+    const list = [...set].sort((a, b) => a - b);
+    return isAdmin ? [0, ...list] : list;
   }, [students]);
 
   const classStudents = useMemo(
-    () => students.filter((s) => s.classNo === activeClass),
+    () =>
+      activeClass === 0 ? students : students.filter((s) => s.classNo === activeClass),
     [students, activeClass],
   );
 
@@ -119,6 +126,8 @@ export default function StudentsPage() {
       motherPhone: selectedStudent.motherPhone,
       motherWechat: selectedStudent.motherWechat,
     });
+    setEditMode(false);
+    setScoreDrafts({});
   }, [selectedStudent?.idCard, exams]);
 
   const examId = exams.find((e) => e.name === selectedExam)?.id || '';
@@ -172,11 +181,49 @@ export default function StudentsPage() {
     showToast('家长信息与备注已保存', 'success');
   };
 
+  const startEditScores = () => {
+    if (!selectedStudent) return;
+    const drafts: Record<string, { rawScore: string; assignedScore: string }> = {};
+    for (const subject of selectedSubjects) {
+      const row = subjectScore(scores, selectedStudent.idCard, examId, subject);
+      drafts[subject] = {
+        rawScore: row?.rawScore == null ? '' : String(row.rawScore),
+        assignedScore: row?.assignedScore == null ? '' : String(row.assignedScore),
+      };
+    }
+    setScoreDrafts(drafts);
+    setEditMode(true);
+  };
+
+  const handleSaveScoreDrafts = () => {
+    if (!selectedStudent || !examId) return;
+    const updates = selectedSubjects.map((subject) => {
+      const d = scoreDrafts[subject];
+      const raw =
+        d?.rawScore === '' || d?.rawScore === undefined
+          ? null
+          : Number(d.rawScore);
+      const assigned =
+        d?.assignedScore === '' || d?.assignedScore === undefined
+          ? null
+          : Number(d.assignedScore);
+      return {
+        subject,
+        rawScore: raw === null || Number.isNaN(raw) ? null : raw,
+        assignedScore:
+          assigned === null || Number.isNaN(assigned) ? null : assigned,
+      };
+    });
+    updateExamScores(selectedStudent.idCard, examId, updates);
+    setEditMode(false);
+    showToast('成绩已保存并重新计算排名', 'success');
+  };
+
   const handleAddStudent = () => {
     setAddForm({
       name: '',
       idCard: '',
-      classNo: activeClass,
+      classNo: activeClass === 0 ? 1 : activeClass,
       selectedSubjects: [],
       fatherName: '',
       fatherPhone: '',
@@ -245,7 +292,8 @@ export default function StudentsPage() {
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">学生管理</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {activeClass}班 · 共 {classStudents.length} 名学生
+                  {activeClass === 0 ? '全部班级' : `${activeClass}班`} · 共{' '}
+                  {classStudents.length} 名学生
                 </p>
               </div>
             </div>
@@ -259,7 +307,7 @@ export default function StudentsPage() {
                 >
                   {classNoList.map((cls) => (
                     <option key={cls} value={cls}>
-                      {cls}班
+                      {cls === 0 ? '全部班级' : `${cls}班`}
                     </option>
                   ))}
                 </select>
@@ -541,6 +589,18 @@ export default function StudentsPage() {
                 </div>
               )}
 
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-medium text-gray-900">各科成绩</h4>
+                {isAdmin && (
+                  <button
+                    onClick={() => (editMode ? setEditMode(false) : startEditScores())}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-[#2dd4bf]/30 text-[#2dd4bf] hover:bg-[#2dd4bf]/5 transition-colors"
+                  >
+                    {editMode ? '完成编辑' : '编辑成绩'}
+                  </button>
+                )}
+              </div>
+
               <div className="space-y-2">
                 {selectedSubjects.map((subject) => {
                   const row = subjectScore(scores, selectedStudent.idCard, examId, subject);
@@ -563,19 +623,62 @@ export default function StudentsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-3">
-                        {hasAssigned ? (
+                        {isAdmin && editMode ? (
                           <>
-                            <span className="text-xs text-gray-400">
-                              原始 {row?.rawScore ?? '-'}
-                            </span>
+                            <input
+                              type="number"
+                              value={
+                                scoreDrafts[subject]?.rawScore ??
+                                String(row?.rawScore ?? '')
+                              }
+                              onChange={(e) =>
+                                setScoreDrafts((prev) => ({
+                                  ...prev,
+                                  [subject]: {
+                                    rawScore: e.target.value,
+                                    assignedScore:
+                                      prev[subject]?.assignedScore ??
+                                      String(row?.assignedScore ?? ''),
+                                  },
+                                }))
+                              }
+                              placeholder="原始分"
+                              className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:border-[#2dd4bf]/50"
+                            />
+                            {hasAssigned && (
+                              <input
+                                type="number"
+                                value={
+                                  scoreDrafts[subject]?.assignedScore ??
+                                  String(row?.assignedScore ?? '')
+                                }
+                                onChange={(e) =>
+                                  setScoreDrafts((prev) => ({
+                                    ...prev,
+                                    [subject]: {
+                                      rawScore:
+                                        prev[subject]?.rawScore ??
+                                        String(row?.rawScore ?? ''),
+                                      assignedScore: e.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="赋分"
+                                className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:border-[#2dd4bf]/50"
+                              />
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {hasAssigned && (
+                              <span className="text-xs text-gray-400">
+                                原始 {row?.rawScore ?? '-'}
+                              </span>
+                            )}
                             <span className="text-sm font-medium text-gray-900">
                               {value?.toFixed(2) ?? '-'} 分
                             </span>
                           </>
-                        ) : (
-                          <span className="text-sm font-medium text-gray-900">
-                            {value?.toFixed(2) ?? '-'} 分
-                          </span>
                         )}
                         <span className="text-xs text-gray-400">
                           班第{row?.classRank || '-'}名 · 校第{row?.schoolRank || '-'}名
@@ -642,6 +745,14 @@ export default function StudentsPage() {
               >
                 查看完整档案
               </button>
+              {isAdmin && editMode && (
+                <button
+                  onClick={handleSaveScoreDrafts}
+                  className="px-4 py-2 text-sm text-white bg-[#1e3a5f] rounded-lg hover:bg-[#162c48] transition-colors"
+                >
+                  保存成绩
+                </button>
+              )}
               <button
                 onClick={handleSaveStudentInfo}
                 className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"

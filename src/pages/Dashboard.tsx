@@ -59,16 +59,25 @@ export default function Dashboard() {
           scoreValue(subjectScore(scores, s.idCard, latestExam.id, subject)),
         )
         .filter((v): v is number => v != null && v > 0);
+      const allValues = students
+        .map((s) =>
+          scoreValue(subjectScore(scores, s.idCard, latestExam.id, subject)),
+        )
+        .filter((v): v is number => v != null && v > 0);
       if (values.length === 0) continue;
       const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+      const allAvg =
+        allValues.length > 0
+          ? allValues.reduce((sum, v) => sum + v, 0) / allValues.length
+          : avg;
       result.push({
         subject,
         classAverage: Math.round(avg * 10) / 10,
-        gradeAverage: Math.round(avg * 10) / 10,
+        gradeAverage: Math.round(allAvg * 10) / 10,
       });
     }
     return result;
-  }, [classStudents, scores, latestExam]);
+  }, [classStudents, students, scores, latestExam]);
 
   const progressRankings = useMemo(() => {
     if (!latestExam || !prevExam) return [];

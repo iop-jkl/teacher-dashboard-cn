@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import type { Student, Score } from '@/types';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 import { subjectScore, scoreValue } from '@/lib/scoreUtils';
 import { ALL_SUBJECTS } from '@/data/mockData';
@@ -23,7 +24,9 @@ export default function StudentTable({
 }: StudentTableProps) {
   const exams = useStore((s) => s.exams);
   const updateExamScores = useStore((s) => s.updateExamScores);
+  const session = useAuthStore((s) => s.session);
   const showToast = useToastStore((s) => s.showToast);
+  const canEdit = session?.role === 'admin';
   const [sortKey, setSortKey] = useState('总分');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [drafts, setDrafts] = useState<
@@ -127,14 +130,16 @@ export default function StudentTable({
               <th className="px-4 py-3 text-right font-medium">班名次</th>
               <th className="px-4 py-3 text-right font-medium">校名次</th>
               <th className="px-4 py-3 text-left font-medium">选科</th>
-              <th className="px-4 py-3 text-center font-medium w-16">编辑</th>
+              {canEdit && (
+                <th className="px-4 py-3 text-center font-medium w-16">编辑</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, idx) => (
               <tr
                 key={row.student.idCard}
-                onDoubleClick={() => openEdit(row.student)}
+                onDoubleClick={canEdit ? () => openEdit(row.student) : undefined}
                 className={cn(
                   'border-t border-gray-50 hover:bg-gray-50/50 transition-colors',
                   idx % 2 === 1 ? 'bg-gray-50/30' : '',
@@ -183,15 +188,17 @@ export default function StudentTable({
                     ))}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <button
-                    onClick={() => openEdit(row.student)}
-                    className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#2dd4bf] transition-colors"
-                    aria-label="编辑成绩"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </td>
+                {canEdit && (
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() => openEdit(row.student)}
+                      className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#2dd4bf] transition-colors"
+                      aria-label="编辑成绩"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -213,13 +220,15 @@ export default function StudentTable({
                   {row.student.classNo}班 · 总分 {row.total.toFixed(2)}
                 </p>
               </Link>
-              <button
-                onClick={() => openEdit(row.student)}
-                className="p-2 rounded-lg bg-[#2dd4bf]/10 text-[#2dd4bf]"
-                aria-label="编辑成绩"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => openEdit(row.student)}
+                  className="p-2 rounded-lg bg-[#2dd4bf]/10 text-[#2dd4bf]"
+                  aria-label="编辑成绩"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         ))}

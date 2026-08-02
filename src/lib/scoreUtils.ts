@@ -67,7 +67,10 @@ export function rankClassStudents(
   examId: string,
   classNo: number,
 ): RankingEntry[] {
-  const list = students.filter((s) => s.classNo === classNo);
+  const list =
+    classNo === 0
+      ? [...students]
+      : students.filter((s) => s.classNo === classNo);
   const entries: RankingEntry[] = list.map((student) => {
     const total = totalFor(scores, student.idCard, examId);
     const totalRow = subjectScore(scores, student.idCard, examId, '总分');
@@ -86,6 +89,14 @@ export function rankClassStudents(
     };
   });
   return entries.sort((a, b) => b.total - a.total);
+}
+
+export function allClassCounts(students: Student[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const s of students) {
+    map.set(s.classNo, (map.get(s.classNo) || 0) + 1);
+  }
+  return map;
 }
 
 export function assignStandardRanks(

@@ -49,11 +49,20 @@ async function gotoLogin(page) {
   console.log('students rows:', rowCount);
   console.log('first row:', firstRowText.replace(/\s+/g, ' ').slice(0, 120));
 
+  // 管理员：切换到全部班级
+  await page.locator('header select').selectOption('0');
+  await page.waitForSelector('text=共 4027 名学生', { timeout: 20000 });
+  console.log('all classes count ok');
+  await page.locator('header select').selectOption('1');
+  await page.waitForSelector('text=共 47 名学生', { timeout: 20000 });
+
   // 打开第一个学生详情弹窗
   await page.locator('table tbody tr').first().locator('button').first().click();
   await page.waitForSelector('text=家长信息', { timeout: 10000 });
   const modalHasScore = await page.locator('text=赋分').count();
   console.log('modal 赋分 labels:', modalHasScore);
+  const adminCanEdit = await page.locator('text=编辑成绩').count();
+  console.log('admin edit score button:', adminCanEdit);
   await page.screenshot({ path: '.import-data/smoke-admin-students.png', fullPage: false });
 
   await context.close();
@@ -70,6 +79,13 @@ async function gotoLogin(page) {
   await page.waitForSelector('text=工作台', { timeout: 15000 });
   const headerText = await page.locator('header').innerText();
   console.log('teacher header:', headerText.replace(/\s+/g, ' ').slice(0, 80));
+  await page.locator('aside').getByText('学生管理', { exact: true }).click();
+  await page.waitForSelector('table tbody tr', { timeout: 20000 });
+  await page.locator('table tbody tr').first().locator('button').first().click();
+  await page.waitForSelector('text=家长信息', { timeout: 10000 });
+  const teacherCanEdit = await page.locator('text=编辑成绩').count();
+  console.log('teacher edit score button:', teacherCanEdit);
+  if (teacherCanEdit !== 0) throw new Error('班主任不应看到编辑成绩按钮');
   await context.close();
 }
 
