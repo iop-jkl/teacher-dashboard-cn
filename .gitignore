@@ -24,3 +24,11 @@ dist-ssr
 *.sw?
 # Local Netlify folder
 .netlify
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+
+# Cloudflare Pages direct upload artifacts
+.cf-deploy/
