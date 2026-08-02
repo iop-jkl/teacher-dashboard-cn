@@ -16,28 +16,36 @@ export default function ExcelExportButton({
 }: ExcelExportButtonProps) {
   const students = useStore((s) => s.students);
   const scores = useStore((s) => s.scores);
+  const exams = useStore((s) => s.exams);
 
   const handleExport = () => {
     const wb = XLSX.utils.book_new();
 
     const studentRows = students.map((s) => ({
-      学号: s.studentNo,
+      身份证号: s.idCard,
       姓名: s.name,
-      班级: s.className,
-      备注: s.remark || '',
+      班级: s.classNo,
+      选科: s.selectedSubjects.join('、'),
+      父亲姓名: s.fatherName,
+      父亲电话: s.fatherPhone,
+      父亲微信: s.fatherWechat,
+      母亲姓名: s.motherName,
+      母亲电话: s.motherPhone,
+      母亲微信: s.motherWechat,
+      备注: s.remark,
     }));
     const studentSheet = XLSX.utils.json_to_sheet(studentRows);
     XLSX.utils.book_append_sheet(wb, studentSheet, '学生名单');
 
-    const studentNoById = new Map(students.map((s) => [s.id, s.studentNo]));
-    const studentNameById = new Map(students.map((s) => [s.id, s.name]));
+    const examNameById = new Map(exams.map((e) => [e.id, e.name]));
+    const studentNameById = new Map(students.map((s) => [s.idCard, s.name]));
     const scoreRows = scores.map((s) => ({
-      考试: s.examId,
-      学号: studentNoById.get(s.studentId) || s.studentId,
+      考试: examNameById.get(s.examId) || s.examId,
+      身份证号: s.studentId,
       姓名: studentNameById.get(s.studentId) || '',
       科目: s.subject,
-      分数: s.score,
-      单科班排名: s.subjectRank || '',
+      原始分: s.rawScore ?? '',
+      赋分: s.assignedScore ?? '',
       班级排名: s.classRank || '',
       学校排名: s.schoolRank || '',
     }));
@@ -48,7 +56,7 @@ export default function ExcelExportButton({
     const url = URL.createObjectURL(
       new Blob([wbout], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      })
+      }),
     );
     const a = document.createElement('a');
     a.href = url;
@@ -65,7 +73,7 @@ export default function ExcelExportButton({
         variant === 'primary'
           ? 'bg-[#1e3a5f] text-white hover:bg-[#162c48]'
           : 'border border-gray-200 text-gray-700 hover:bg-gray-50',
-        className
+        className,
       )}
     >
       <Download className="w-4 h-4" />

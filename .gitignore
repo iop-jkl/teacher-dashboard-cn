@@ -32,3 +32,6 @@ dist-ssr
 
 # Cloudflare Pages direct upload artifacts
 .cf-deploy/
+
+# Exam import artifacts
+.import-data/

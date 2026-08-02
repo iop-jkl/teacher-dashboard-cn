@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, LogIn, User } from 'lucide-react';
+import { Lock, LogIn, User, GraduationCap, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuth';
 
 export default function LoginPage() {
@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -17,9 +18,13 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, navigate]);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (login(username.trim(), password)) {
+    setError('');
+    setLoading(true);
+    const ok = await login(username, password);
+    setLoading(false);
+    if (ok) {
       navigate('/', { replace: true });
     } else {
       setError('账号或密码错误');
@@ -52,7 +57,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="请输入账号"
+                placeholder="管理员：admin；班主任：班级号"
                 autoComplete="username"
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-[#2dd4bf]/40 focus:outline-none transition-all"
               />
@@ -77,6 +82,23 @@ export default function LoginPage() {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2">
+              <ShieldCheck className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-blue-700">管理员</p>
+                <p className="text-[11px] text-blue-500">admin / 111，查看全部班级</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-2 rounded-lg bg-teal-50 px-3 py-2">
+              <GraduationCap className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-teal-700">班主任</p>
+                <p className="text-[11px] text-teal-500">用班级号登录，如 1</p>
+              </div>
+            </div>
+          </div>
+
           {error && (
             <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
               {error}
@@ -85,10 +107,11 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2dd4bf] text-white text-sm font-medium rounded-lg hover:bg-[#14b8a6] transition-colors"
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2dd4bf] text-white text-sm font-medium rounded-lg hover:bg-[#14b8a6] disabled:opacity-60 transition-colors"
           >
             <LogIn className="w-4 h-4" />
-            登录
+            {loading ? '登录中...' : '登录'}
           </button>
         </form>
       </div>

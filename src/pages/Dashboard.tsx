@@ -9,21 +9,12 @@ import StudentTable from '@/components/StudentTable';
 import TopStudentsRanking from '@/components/TopStudentsRanking';
 import QuickActions from '@/components/QuickActions';
 import AddReminderModal from '@/components/AddReminderModal';
-import StudentProgressBoard from '@/components/StudentProgressBoard';
-import ExcelImportButton from '@/components/ExcelImportButton';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import ToastContainer from '@/components/ToastContainer';
 import { useStore } from '@/store/useStore';
 import { useToastStore } from '@/store/useToast';
-import {
-  SUBJECTS,
-} from '@/data/mockData';
-import type { ExamTrendPoint } from '@/types';
-
-function sumPoint(point: ExamTrendPoint | undefined): number {
-  if (!point) return 0;
-  return SUBJECTS.reduce((sum, subject) => sum + (Number(point[subject]) || 0), 0);
-}
+import { ALL_SUBJECTS } from '@/data/mockData';
+import { subjectScore, scoreValue, totalFor } from '@/lib/scoreUtils';
 
 export default function Dashboard() {
   const {
@@ -32,13 +23,13 @@ export default function Dashboard() {
     activeClass,
     sidebarOpen,
     openSidebar,
-    currentExamIndex,
-    setCurrentExamIndex,
     closeSidebar,
     students,
     scores,
-    studentScoreTrend,
+    exams,
     examList,
+    currentExamIndex,
+    setCurrentExamIndex,
   } = useStore();
 
   const showToast = useToastStore((s) => s.showToast);
@@ -46,117 +37,77 @@ export default function Dashboard() {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
 
-  const completedCount = reminders.filter((r) => r.completed).length;
-  const pendingCount = reminders.length - completedCount;
+  const pendingCount = reminders.filter((r) => !r.completed).length;
 
   const clampedExamIndex = Math.min(Math.max(currentExamIndex, 0), examList.length - 1);
   const latestExamName = examList[clampedExamIndex] || '暂无考试';
-  const examHasPrev = clampedExamIndex > 0;
-  const prevExamName = examHasPrev ? examList[clampedExamIndex - 1] : '';
+  const latestExam = exams.find((e) => e.name === latestExamName);
+  const prevExamName = clampedExamIndex > 0 ? examList[clampedExamIndex - 1] : '';
+  const prevExam = exams.find((e) => e.name === prevExamName);
+
+  const classStudents = useMemo(
+    () => students.filter((s) => s.classNo === activeClass),
+    [students, activeClass],
+  );
 
   const examAverageData = useMemo(() => {
-    const examScores = scores.filter((s) => s.examId === latestExamName && s.score > 0);
-    if (examScores.length > 0) {
-      const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
-      for (const subject of SUBJECTS) {
-        const list = examScores.filter((s) => s.subject === subject);
-        if (list.length === 0) continue;
-        const avg = list.reduce((sum, s) => sum + s.score, 0) / list.length;
-        result.push({
-          subject,
-          classAverage: Math.round(avg * 10) / 10,
-          gradeAverage: Math.round(avg * 10) / 10,
-        });
-      }
-      return result;
+    if (!latestExam) return [];
+    const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
+    for (const subject of ALL_SUBJECTS) {
+      const values = classStudents
+        .map((s) =>
+          scoreValue(subjectScore(scores, s.idCard, latestExam.id, subject)),
+        )
+        .filter((v): v is number => v != null && v > 0);
+      if (values.length === 0) continue;
+      const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+      result.push({
+        subject,
+        classAverage: Math.round(avg * 10) / 10,
+        gradeAverage: Math.round(avg * 10) / 10,
+      });
     }
-    return [];
-  }, [scores, latestExamName]);
-
-  const prevExamAverageData = useMemo(() => {
-    if (!prevExamName) return [];
-    const examScores = scores.filter((s) => s.examId === prevExamName && s.score > 0);
-    if (examScores.length > 0) {
-      const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
-      for (const subject of SUBJECTS) {
-        const list = examScores.filter((s) => s.subject === subject);
-        if (list.length === 0) continue;
-        const avg = list.reduce((sum, s) => sum + s.score, 0) / list.length;
-        result.push({
-          subject,
-          classAverage: Math.round(avg * 10) / 10,
-          gradeAverage: Math.round(avg * 10) / 10,
-        });
-      }
-      return result;
-    }
-    return [];
-  }, [scores, prevExamName]);
+    return result;
+  }, [classStudents, scores, latestExam]);
 
   const progressRankings = useMemo(() => {
-    return students
-      .map((student) => {
-        const points = studentScoreTrend[student.id] || [];
-        let total = student.totalScore;
-        let prevTotal = student.totalScore;
-        if (points.length > 0) {
-          const idx = Math.min(clampedExamIndex, points.length - 1);
-          total = sumPoint(points[idx]);
-          prevTotal = idx > 0 ? sumPoint(points[idx - 1]) : total;
-        }
-        return { id: student.id, name: student.name, total, diff: total - prevTotal };
-      })
-      .filter((s) => s.total > 0 || s.diff !== 0);
-  }, [students, studentScoreTrend, clampedExamIndex]);
+    if (!latestExam || !prevExam) return [];
+    return classStudents.map((student) => {
+      const total = totalFor(scores, student.idCard, latestExam.id);
+      const prevTotal = totalFor(scores, student.idCard, prevExam.id);
+      return {
+        id: student.idCard,
+        name: student.name,
+        total,
+        diff: Math.round((total - prevTotal) * 100) / 100,
+      };
+    });
+  }, [classStudents, scores, latestExam, prevExam]);
 
   const topImprovements = useMemo(
     () => [...progressRankings].sort((a, b) => b.diff - a.diff).slice(0, 5),
-    [progressRankings]
+    [progressRankings],
   );
   const topDeclines = useMemo(
     () => [...progressRankings].sort((a, b) => a.diff - b.diff).slice(0, 5),
-    [progressRankings]
+    [progressRankings],
   );
 
-  const progressBoardStudents = useMemo(
-    () =>
-      students.map((student) => {
-        const p = progressRankings.find((r) => r.id === student.id);
-        return {
-          id: student.id,
-          name: student.name,
-          total: p?.total ?? student.totalScore,
-          rank: student.rank,
-          trend: p?.diff ?? 0,
-        };
-      }),
-    [students, progressRankings]
-  );
-
-  const prevExam = () => {
+  const goPrevExam = () => {
     if (clampedExamIndex > 0) setCurrentExamIndex(clampedExamIndex - 1);
   };
-  const nextExam = () => {
+  const goNextExam = () => {
     if (clampedExamIndex < examList.length - 1) setCurrentExamIndex(clampedExamIndex + 1);
   };
 
-  const getSubjectAverage = (subject: string, data: typeof examAverageData) =>
-    data.find((d) => d.subject === subject);
-
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase();
-    return students.filter(
+    const q = searchQuery.toLowerCase();
+    return classStudents.filter(
       (s) =>
-        s.name.toLowerCase().includes(query) ||
-        s.studentNo.includes(query)
+        s.name.toLowerCase().includes(q) || s.idCard.toLowerCase().includes(q),
     );
-  }, [searchQuery, students]);
-
-  const handleSearch = (value: string) => {
-    setSearchQuery(value);
-    setShowSearchResults(value.length > 0);
-  };
+  }, [searchQuery, classStudents]);
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -184,10 +135,7 @@ export default function Dashboard() {
                     weekday: 'long',
                   })}
                   {' · '}
-                  <span className="text-[#2dd4bf]">{activeClass}</span>
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5 sm:hidden">
-                  <span className="text-[#2dd4bf]">{activeClass}</span>
+                  <span className="text-[#2dd4bf]">{activeClass}班</span>
                 </p>
               </div>
             </div>
@@ -198,17 +146,20 @@ export default function Dashboard() {
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowSearchResults(e.target.value.length > 0);
+                  }}
                   onFocus={() => setShowSearchResults(searchQuery.length > 0)}
-                  placeholder="搜索学生、考试..."
+                  placeholder="搜索学生姓名或身份证号"
                   className="pl-10 pr-4 py-2 w-48 lg:w-64 bg-gray-50 border border-transparent rounded-lg text-sm focus:bg-white focus:border-[#2dd4bf]/30 focus:outline-none transition-all"
                 />
                 {showSearchResults && searchResults.length > 0 && (
                   <div className="absolute top-full mt-1 left-0 w-full bg-white rounded-lg shadow-lg border border-gray-100 py-2 max-h-64 overflow-y-auto z-20">
                     {searchResults.map((student) => (
                       <a
-                        key={student.id}
-                        href={`/student/${student.id}`}
+                        key={student.idCard}
+                        href={`/student/${student.idCard}`}
                         onClick={() => {
                           setShowSearchResults(false);
                           setSearchQuery('');
@@ -219,7 +170,7 @@ export default function Dashboard() {
                           {student.name.charAt(0)}
                         </div>
                         <span className="text-gray-900">{student.name}</span>
-                        <span className="text-gray-400 text-xs">{student.studentNo}</span>
+                        <span className="text-gray-400 text-xs">{student.classNo}班</span>
                       </a>
                     ))}
                   </div>
@@ -255,12 +206,12 @@ export default function Dashboard() {
               <div>
                 <h3 className="text-base font-semibold text-gray-900">选择考试</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  切换不同考试查看进步/退步前五名及各科平均分
+                  切换不同考试查看班级均分与进步/退步前五名
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={prevExam}
+                  onClick={goPrevExam}
                   disabled={clampedExamIndex === 0}
                   className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="上一场考试"
@@ -271,7 +222,7 @@ export default function Dashboard() {
                   {latestExamName}
                 </div>
                 <button
-                  onClick={nextExam}
+                  onClick={goNextExam}
                   disabled={clampedExamIndex === examList.length - 1}
                   className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="下一场考试"
@@ -306,7 +257,6 @@ export default function Dashboard() {
                     {pendingCount} 待办
                   </span>
                 </div>
-
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {reminders.map((reminder) => (
                     <ReminderCard
@@ -317,41 +267,36 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
-
             </div>
 
             <div className="lg:col-span-2 space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-base font-semibold text-gray-900">
-                      考试平均分概览
-                    </h3>
+                    <h3 className="text-base font-semibold text-gray-900">考试平均分概览</h3>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      本次考试：{latestExamName}
+                      {activeClass}班 · {latestExamName}
                     </p>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {SUBJECTS.map((subject) => {
-                    const current = getSubjectAverage(subject, examAverageData);
-                    const prev = examHasPrev ? getSubjectAverage(subject, prevExamAverageData) : undefined;
-                    if (!current) return null;
-                    return (
-                      <SubjectCard
-                        key={subject}
-                        subject={subject}
-                        classAverage={current.classAverage}
-                        gradeAverage={current.gradeAverage}
-                        previousAverage={prev?.classAverage}
-                      />
-                    );
-                  })}
+                  {examAverageData.map((d) => (
+                    <SubjectCard
+                      key={d.subject}
+                      subject={d.subject}
+                      classAverage={d.classAverage}
+                      gradeAverage={d.gradeAverage}
+                    />
+                  ))}
+                  {examAverageData.length === 0 && (
+                    <div className="col-span-full py-10 text-center text-sm text-gray-400">
+                      暂无成绩数据
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <ScoreChart />
+              <ScoreChart classNo={activeClass} />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <TopStudentsRanking
@@ -368,20 +313,16 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <StudentProgressBoard
-            examName={latestExamName}
-            hasPrev={examHasPrev}
-            students={progressBoardStudents}
-          />
-
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
-            <div className="flex items-center gap-2">
-              <ExcelExportButton />
-              <ExcelImportButton label="导入Excel数据" />
-            </div>
+            <ExcelExportButton />
           </div>
-          <StudentTable students={students} scores={scores} className={activeClass} />
+          <StudentTable
+            students={classStudents}
+            scores={scores}
+            examId={latestExam?.id}
+            className={`${activeClass}班`}
+          />
         </div>
       </main>
 

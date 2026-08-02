@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -7,92 +7,70 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
-import { SUBJECTS } from '@/data/mockData';
 import { useStore } from '@/store/useStore';
-import { cn } from '@/lib/utils';
+import { totalFor } from '@/lib/scoreUtils';
 
-const COLORS: Record<string, string> = {
-  语文: '#1e3a5f',
-  数学: '#2dd4bf',
-  英语: '#3b82f6',
-  物理: '#8b5cf6',
-  化学: '#f59e0b',
-  生物: '#10b981',
-};
+interface ScoreChartProps {
+  studentId?: string;
+  classNo?: number;
+}
 
-export default function ScoreChart({ studentId }: { studentId?: string }) {
-  const studentScoreTrend = useStore((s) => s.studentScoreTrend);
-  const classTrendData = useStore((s) => s.examTrendData);
-  const [activeSubjects, setActiveSubjects] = useState<string[]>([...SUBJECTS]);
+export default function ScoreChart({ studentId, classNo }: ScoreChartProps) {
+  const students = useStore((s) => s.students);
+  const scores = useStore((s) => s.scores);
+  const exams = useStore((s) => s.exams);
 
-  const personalData = useMemo(() => {
-    if (!studentId) return [];
-    return (studentScoreTrend[studentId] || []).map((point) => ({
-      examName: point.examName,
-      date: point.date,
-      ...SUBJECTS.reduce((acc, subject) => {
-        acc[subject] = point[subject];
-        return acc;
-      }, {} as Record<string, string | number>),
-    }));
-  }, [studentId, studentScoreTrend]);
+  const sortedExams = useMemo(
+    () =>
+      [...exams].sort(
+        (a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name),
+      ),
+    [exams],
+  );
 
   const isPersonal = Boolean(studentId);
-  const chartData = isPersonal ? personalData : classTrendData;
-  const xKey = isPersonal ? 'examName' : 'date';
 
-  const toggleSubject = (subject: string) => {
-    setActiveSubjects((prev) =>
-      prev.includes(subject)
-        ? prev.filter((s) => s !== subject)
-        : [...prev, subject]
-    );
-  };
+  const data = useMemo(() => {
+    if (isPersonal && studentId) {
+      return sortedExams.map((exam) => ({
+        exam: exam.name,
+        总分赋分: totalFor(scores, studentId, exam.id),
+      }));
+    }
+    if (classNo) {
+      const classIds = new Set(
+        students.filter((s) => s.classNo === classNo).map((s) => s.idCard),
+      );
+      return sortedExams.map((exam) => {
+        const totals = [...classIds].map((id) =>
+          totalFor(scores, id, exam.id),
+        );
+        const avg =
+          totals.length > 0
+            ? totals.reduce((sum, t) => sum + t, 0) / totals.length
+            : 0;
+        return { exam: exam.name, 总分赋分: Math.round(avg * 100) / 100 };
+      });
+    }
+    return [];
+  }, [isPersonal, studentId, classNo, sortedExams, scores, students]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900">
-            {isPersonal ? '个人成绩趋势' : '班级成绩趋势'}
-          </h3>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {isPersonal ? '该学生各科成绩走势' : '近三次考试各科平均分走势'}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        {SUBJECTS.map((subject) => (
-          <button
-            key={subject}
-            onClick={() => toggleSubject(subject)}
-            className={cn(
-              'px-3 py-1 text-xs rounded-full border transition-all',
-              activeSubjects.includes(subject)
-                ? 'border-transparent text-white'
-                : 'border-gray-200 text-gray-500 bg-white hover:border-gray-300'
-            )}
-            style={
-              activeSubjects.includes(subject)
-                ? { backgroundColor: COLORS[subject] }
-                : undefined
-            }
-          >
-            {subject}
-          </button>
-        ))}
-      </div>
-
-      {chartData.length > 0 ? (
+      <h3 className="text-base font-semibold text-gray-900 mb-4">
+        {isPersonal ? '个人成绩趋势' : '班级平均分趋势'}
+      </h3>
+      <p className="text-xs text-gray-400 -mt-2 mb-4">
+        {isPersonal ? '各次考试总分赋分走势' : '各次考试班级总分赋分平均分走势'}
+      </p>
+      {data.length > 1 ? (
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis
-                dataKey={xKey}
+                dataKey="exam"
                 tick={{ fontSize: 12, fill: '#94a3b8' }}
                 tickLine={false}
                 axisLine={{ stroke: '#e2e8f0' }}
@@ -111,26 +89,20 @@ export default function ScoreChart({ studentId }: { studentId?: string }) {
                   fontSize: '12px',
                 }}
               />
-              <Legend
-                wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }}
+              <Line
+                type="monotone"
+                dataKey="总分赋分"
+                stroke="#2dd4bf"
+                strokeWidth={2}
+                dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                activeDot={{ r: 6 }}
               />
-              {activeSubjects.map((subject) => (
-                <Line
-                  key={subject}
-                  type="monotone"
-                  dataKey={subject}
-                  stroke={COLORS[subject]}
-                  strokeWidth={2}
-                  dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
-                  activeDot={{ r: 6 }}
-                />
-              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
       ) : (
         <div className="h-64 flex items-center justify-center text-sm text-gray-400">
-          暂无个人成绩趋势数据
+          暂无趋势数据，至少需要两场考试
         </div>
       )}
     </div>

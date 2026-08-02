@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { useStore, type PageKey } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
-import { useToastStore } from '@/store/useToast';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -36,11 +35,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const activePage = useStore((s) => s.activePage);
   const setActivePage = useStore((s) => s.setActivePage);
   const closeSidebar = useStore((s) => s.closeSidebar);
-  const userSettings = useStore((s) => s.userSettings);
-  const showToast = useToastStore((s) => s.showToast);
+  const session = useAuthStore((s) => s.session);
   const logout = useAuthStore((s) => s.logout);
 
-  const handleNavigate = (item: typeof navItems[number]) => {
+  const handleNavigate = (item: (typeof navItems)[number]) => {
     setActivePage(item.key);
     navigate(item.path);
     closeSidebar();
@@ -48,12 +46,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const handleLogout = () => {
     logout();
-    showToast('已退出登录', 'info');
     closeSidebar();
     navigate('/login');
   };
 
   const currentPath = location.pathname;
+  const teacherName = session?.teacherName || '用户';
+  const subtitle =
+    session?.role === 'admin'
+      ? '管理员 · 全部班级'
+      : `${session?.classNo ?? ''}班 · 班主任`;
 
   return (
     <>
@@ -81,17 +83,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             className="flex items-center gap-2"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center">
-              <span className="text-white text-sm font-bold">CT</span>
+              <span className="text-white text-sm font-bold">班</span>
             </div>
             <div className="text-left">
               <p className="text-sm font-semibold text-gray-900 leading-tight">班主任工作台</p>
               <p className="text-[10px] text-gray-400 leading-tight">Class Teacher</p>
             </div>
           </button>
-          <button
-            onClick={onClose}
-            className="lg:hidden p-1 rounded hover:bg-gray-100"
-          >
+          <button onClick={onClose} className="lg:hidden p-1 rounded hover:bg-gray-100">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -101,8 +100,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             const isActive =
               item.key === activePage ||
               (item.path === '/' && (currentPath === '/' || currentPath === '')) ||
-              currentPath.startsWith(item.path) && item.path !== '/' && item.path !== '';
-
+              (currentPath.startsWith(item.path) && item.path !== '/');
             return (
               <button
                 key={item.key}
@@ -129,15 +127,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-100">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-sm font-medium">
-              {userSettings.teacherName.charAt(0)}
+              {Array.from(teacherName.trim())[0] || '师'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {userSettings.teacherName}
-              </p>
-              <p className="text-xs text-gray-400 truncate">
-                {userSettings.className} · {userSettings.position}
-              </p>
+              <p className="text-sm font-medium text-gray-900 truncate">{teacherName}</p>
+              <p className="text-xs text-gray-400 truncate">{subtitle}</p>
             </div>
           </div>
           <button

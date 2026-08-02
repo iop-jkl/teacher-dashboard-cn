@@ -3,7 +3,6 @@ import { Calendar, Plus, ChevronLeft, ChevronRight, Clock, MapPin, Users, X } fr
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
-import ExcelImportButton from '@/components/ExcelImportButton';
 import { useStore, type ScheduleEvent } from '@/store/useStore';
 import { useToastStore } from '@/store/useToast';
 
@@ -92,7 +91,6 @@ export default function SchedulePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ExcelImportButton variant="secondary" label="导入Excel" />
               <button
                 onClick={() => setShowAddModal(true)}
                 className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"

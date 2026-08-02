@@ -11,40 +11,36 @@ export interface Exam {
   id: string;
   name: string;
   date: string;
-  subject: string;
-  classAverage: number;
-  gradeAverage: number;
 }
 
 export interface Student {
-  id: string;
+  idCard: string;
   name: string;
-  studentNo: string;
-  className: string;
-  avatar: string;
-  totalScore: number;
-  rank: number;
-  trend: 'up' | 'down' | 'stable';
-  trendValue: number;
-  remark?: string;
+  classNo: number;
+  selectedSubjects: string[];
+  fatherName: string;
+  fatherPhone: string;
+  fatherWechat: string;
+  motherName: string;
+  motherPhone: string;
+  motherWechat: string;
+  remark: string;
 }
 
 export interface Score {
-  id: string;
   studentId: string;
   examId: string;
   subject: string;
-  score: number;
-  classRank: number;
+  rawScore: number | null;
+  assignedScore: number | null;
   schoolRank: number;
-  subjectRank: number;
-  totalStudents: number;
+  classRank: number;
 }
 
-export interface ExamTrendPoint {
-  examName: string;
-  date: string;
-  [subject: string]: string | number;
+export interface ClassTeacher {
+  classNo: number;
+  teacherName: string;
+  password: string;
 }
 
 export interface Announcement {
@@ -55,10 +51,16 @@ export interface Announcement {
   date: string;
 }
 
+export interface ExamTrendPoint {
+  examName: string;
+  date: string;
+  [subject: string]: string | number;
+}
+
 export interface SubjectScore {
   subject: string;
-  score: number;
+  rawScore: number | null;
+  assignedScore: number | null;
   classRank: number;
-  subjectRank: number;
   schoolRank: number;
 }

@@ -1,112 +1,144 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Menu, UserPlus, Trash2, Eye, X, Save, TrendingUp, TrendingDown, Minus, CheckSquare } from 'lucide-react';
+import {
+  Search,
+  Menu,
+  UserPlus,
+  Trash2,
+  X,
+  Save,
+  Eye,
+} from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
-import ExcelImportButton from '@/components/ExcelImportButton';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
-import { getFullScore } from '@/data/mockData';
+import { rankClassStudents, subjectScore, scoreValue } from '@/lib/scoreUtils';
 import type { Student } from '@/types';
 
-const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物'];
+const SELECTABLE = ['政治', '历史', '地理', '物理', '化学', '生物'];
 
 export default function StudentsPage() {
-  const { sidebarOpen, openSidebar, closeSidebar, students, scores, removeStudent, removeStudents, updateStudent, addStudent, updateExamScores, batchUpdateScores, examList, userSettings, activeClass } = useStore();
+  const {
+    sidebarOpen,
+    openSidebar,
+    closeSidebar,
+    students,
+    scores,
+    exams,
+    removeStudent,
+    removeStudents,
+    updateStudent,
+    addStudent,
+    activeClass,
+    setActiveClass,
+  } = useStore();
+  const session = useAuthStore((s) => s.session);
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
+
+  const isAdmin = session?.role === 'admin';
+
+  useEffect(() => {
+    if (!isAdmin && session?.classNo) {
+      setActiveClass(session.classNo);
+    }
+  }, [isAdmin, session?.classNo, setActiveClass]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedExam, setSelectedExam] = useState('');
   const [remarkDraft, setRemarkDraft] = useState('');
+  const [parentDraft, setParentDraft] = useState({
+    fatherName: '',
+    fatherPhone: '',
+    fatherWechat: '',
+    motherName: '',
+    motherPhone: '',
+    motherWechat: '',
+  });
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showBatchScoreModal, setShowBatchScoreModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [batchExam, setBatchExam] = useState('');
-  const [batchSubject, setBatchSubject] = useState(SUBJECTS[0]);
-  const [batchMode, setBatchMode] = useState<'set' | 'add' | 'subtract'>('set');
-  const [batchValue, setBatchValue] = useState(0);
-  const [addName, setAddName] = useState('');
-  const [addStudentNo, setAddStudentNo] = useState('');
-  const [editMode, setEditMode] = useState(false);
-  const [scoreDrafts, setScoreDrafts] = useState<Record<string, number>>({});
+  const [addForm, setAddForm] = useState({
+    name: '',
+    idCard: '',
+    classNo: 1,
+    selectedSubjects: [] as string[],
+    fatherName: '',
+    fatherPhone: '',
+    fatherWechat: '',
+    motherName: '',
+    motherPhone: '',
+    motherWechat: '',
+  });
 
-  const filteredStudents = useMemo(() => {
-    let result = students;
+  const classNoList = useMemo(() => {
+    const set = new Set<number>();
+    for (const s of students) set.add(s.classNo);
+    return [...set].sort((a, b) => a - b);
+  }, [students]);
+
+  const classStudents = useMemo(
+    () => students.filter((s) => s.classNo === activeClass),
+    [students, activeClass],
+  );
+
+  const latestExam = exams[exams.length - 1];
+
+  const ranked = useMemo(() => {
+    if (!latestExam) return [];
+    return rankClassStudents(classStudents, scores, latestExam.id, activeClass);
+  }, [classStudents, scores, latestExam, activeClass]);
+
+  const filtered = useMemo(() => {
+    let result = ranked;
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(query) ||
-          s.studentNo.toLowerCase().includes(query)
+        (e) =>
+          e.student.name.toLowerCase().includes(q) ||
+          e.student.idCard.toLowerCase().includes(q),
       );
     }
-    return [...result].sort((a, b) =>
-      a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true })
-    );
-  }, [students, searchQuery]);
-
-  const studentExams = useMemo(() => {
-    if (!selectedStudent) return [];
-    const examSet = new Set(
-      scores
-        .filter((s) => s.studentId === selectedStudent.id)
-        .map((s) => s.examId)
-    );
-    return [...examSet].sort((a, b) => {
-      const dateA = userSettings.examDates[a] || '';
-      const dateB = userSettings.examDates[b] || '';
-      return dateA.localeCompare(dateB) || a.localeCompare(b);
-    });
-  }, [scores, selectedStudent, userSettings.examDates]);
-
-  const selectedExamScores = useMemo(() => {
-    if (!selectedStudent || !selectedExam) return [];
-    return scores.filter(
-      (s) => s.studentId === selectedStudent.id && s.examId === selectedExam
-    );
-  }, [scores, selectedStudent, selectedExam]);
-
-  const prevExamScores = useMemo(() => {
-    if (!selectedStudent || !selectedExam) return [];
-    const idx = studentExams.indexOf(selectedExam);
-    const prev = idx > 0 ? studentExams[idx - 1] : '';
-    return prev
-      ? scores.filter((s) => s.studentId === selectedStudent.id && s.examId === prev)
-      : [];
-  }, [scores, selectedStudent, selectedExam, studentExams]);
-
-  const selectedTotal = useMemo(
-    () => selectedExamScores.reduce((sum, s) => sum + s.score, 0),
-    [selectedExamScores]
-  );
-  const prevTotal = useMemo(
-    () => prevExamScores.reduce((sum, s) => sum + s.score, 0),
-    [prevExamScores]
-  );
-  const selectedClassRank = selectedExamScores[0]?.classRank || 0;
-  const selectedSchoolRank = selectedExamScores[0]?.schoolRank || 0;
-  const hasPrev = studentExams.indexOf(selectedExam) > 0;
-  const totalDiff = hasPrev ? selectedTotal - prevTotal : 0;
+    return result;
+  }, [ranked, searchQuery]);
 
   useEffect(() => {
-    if (!selectedStudent || !selectedExam) return;
-    const drafts: Record<string, number> = {};
-    for (const s of scores.filter(
-      (x) => x.studentId === selectedStudent.id && x.examId === selectedExam
-    )) {
-      drafts[s.subject] = s.score;
-    }
-    setScoreDrafts(drafts);
-    setEditMode(false);
-  }, [selectedStudent?.id, selectedExam, scores]);
+    if (!selectedStudent) return;
+    const examsForStudent = exams;
+    setSelectedExam(examsForStudent[examsForStudent.length - 1]?.name || '');
+    setRemarkDraft(selectedStudent.remark);
+    setParentDraft({
+      fatherName: selectedStudent.fatherName,
+      fatherPhone: selectedStudent.fatherPhone,
+      fatherWechat: selectedStudent.fatherWechat,
+      motherName: selectedStudent.motherName,
+      motherPhone: selectedStudent.motherPhone,
+      motherWechat: selectedStudent.motherWechat,
+    });
+  }, [selectedStudent?.idCard, exams]);
 
-  const handleDeleteStudent = (id: string) => {
-    if (!window.confirm('确认删除该学生及其成绩？')) return;
-    removeStudent(id);
+  const examId = exams.find((e) => e.name === selectedExam)?.id || '';
+
+  const selectedStudentScores = useMemo(() => {
+    if (!selectedStudent || !examId) return [];
+    return scores.filter(
+      (s) => s.studentId === selectedStudent.idCard && s.examId === examId,
+    );
+  }, [selectedStudent, examId, scores]);
+
+  const selectedTotal = selectedStudentScores.find((s) => s.subject === '总分');
+  const selectedSubjects = selectedStudent
+    ? [...['语文', '数学', '英语'], ...selectedStudent.selectedSubjects]
+    : [];
+
+  const handleDeleteStudent = (idCard: string) => {
+    if (!window.confirm('确认删除该学生及其全部成绩？')) return;
+    removeStudent(idCard);
+    setSelectedIds((prev) => prev.filter((x) => x !== idCard));
     showToast('学生已删除', 'info');
   };
 
@@ -118,86 +150,81 @@ export default function StudentsPage() {
     showToast('已删除选中学生', 'success');
   };
 
-  const handleBatchSaveScores = () => {
-    if (selectedIds.length === 0 || !batchExam) return;
-    const updates = selectedIds.flatMap((studentId) => {
-      const existing = scores.find(
-        (s) => s.studentId === studentId && s.examId === batchExam && s.subject === batchSubject
-      );
-      if (!existing) return [];
-      let next = existing.score;
-      if (batchMode === 'set') next = batchValue;
-      if (batchMode === 'add') next += batchValue;
-      if (batchMode === 'subtract') next -= batchValue;
-      return [{ studentId, examId: batchExam, subject: batchSubject, score: next }];
-    });
-    if (updates.length === 0) {
-      showToast('所选学生在该考试中暂无此科目成绩', 'info');
-      return;
-    }
-    batchUpdateScores(updates);
-    setShowBatchScoreModal(false);
-    showToast('批量成绩已保存并重新排名', 'success');
-  };
-
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (idCard: string) => {
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(idCard)
+        ? prev.filter((x) => x !== idCard)
+        : [...prev, idCard],
     );
   };
 
+  const handleSaveStudentInfo = () => {
+    if (!selectedStudent) return;
+    updateStudent(selectedStudent.idCard, {
+      remark: remarkDraft,
+      ...parentDraft,
+    });
+    setSelectedStudent({
+      ...selectedStudent,
+      remark: remarkDraft,
+      ...parentDraft,
+    });
+    showToast('家长信息与备注已保存', 'success');
+  };
+
   const handleAddStudent = () => {
-    setAddName('');
-    setAddStudentNo('');
+    setAddForm({
+      name: '',
+      idCard: '',
+      classNo: activeClass,
+      selectedSubjects: [],
+      fatherName: '',
+      fatherPhone: '',
+      fatherWechat: '',
+      motherName: '',
+      motherPhone: '',
+      motherWechat: '',
+    });
     setShowAddModal(true);
   };
 
   const handleSaveAddStudent = () => {
-    if (!addName.trim() || !addStudentNo.trim()) {
-      showToast('请填写姓名和学号', 'info');
+    if (!addForm.name.trim() || !/^\d{17}[\dXx]$/.test(addForm.idCard.trim())) {
+      showToast('请填写姓名和正确的18位身份证号', 'info');
+      return;
+    }
+    if (addForm.selectedSubjects.length !== 3) {
+      showToast('请选择3门选考科目', 'info');
+      return;
+    }
+    if (students.some((s) => s.idCard === addForm.idCard.trim())) {
+      showToast('该身份证号已存在', 'info');
       return;
     }
     addStudent({
-      name: addName.trim(),
-      studentNo: addStudentNo.trim(),
-      className: activeClass,
-      avatar: '',
-      totalScore: 0,
-      rank: 0,
-      trend: 'stable',
-      trendValue: 0,
+      idCard: addForm.idCard.trim(),
+      name: addForm.name.trim(),
+      classNo: addForm.classNo,
+      selectedSubjects: addForm.selectedSubjects,
+      fatherName: addForm.fatherName.trim(),
+      fatherPhone: addForm.fatherPhone.trim(),
+      fatherWechat: addForm.fatherWechat.trim(),
+      motherName: addForm.motherName.trim(),
+      motherPhone: addForm.motherPhone.trim(),
+      motherWechat: addForm.motherWechat.trim(),
+      remark: '',
     });
     setShowAddModal(false);
     showToast('学生已添加', 'success');
   };
 
-  const handleOpenStudent = (student: Student) => {
-    setSelectedStudent(student);
-    setRemarkDraft(student.remark || '');
-    const exams = [
-      ...new Set(scores.filter((s) => s.studentId === student.id).map((s) => s.examId)),
-    ].sort((a, b) => a.localeCompare(b));
-    setSelectedExam(exams[exams.length - 1] || '');
-  };
-
-  const handleSaveRemark = () => {
-    if (selectedStudent) {
-      updateStudent(selectedStudent.id, { remark: remarkDraft });
-      setSelectedStudent({ ...selectedStudent, remark: remarkDraft });
-      showToast('备注已保存', 'success');
-    }
-  };
-
-  const handleSaveScores = () => {
-    if (!selectedStudent || !selectedExam) return;
-    const updates = SUBJECTS.map((subject) => ({
-      subject,
-      score: scoreDrafts[subject],
-    })).filter((u) => typeof u.score === 'number' && !Number.isNaN(u.score));
-    if (updates.length === 0) return;
-    updateExamScores(selectedStudent.id, selectedExam, updates);
-    showToast('成绩已保存并重新排名', 'success');
-    setEditMode(false);
+  const toggleSelectedSubject = (subject: string) => {
+    setAddForm((prev) => ({
+      ...prev,
+      selectedSubjects: prev.selectedSubjects.includes(subject)
+        ? prev.selectedSubjects.filter((s) => s !== subject)
+        : [...prev.selectedSubjects, subject],
+    }));
   };
 
   return (
@@ -217,11 +244,26 @@ export default function StudentsPage() {
               </button>
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">学生管理</h2>
-                <p className="text-xs text-gray-500 mt-0.5">{activeClass} · 共 {students.length} 名学生</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {activeClass}班 · 共 {classStudents.length} 名学生
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ExcelImportButton variant="secondary" label="导入Excel" />
+              {isAdmin && (
+                <select
+                  value={activeClass}
+                  onChange={(e) => setActiveClass(Number(e.target.value))}
+                  className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
+                  aria-label="切换班级"
+                >
+                  {classNoList.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}班
+                    </option>
+                  ))}
+                </select>
+              )}
               <ExcelExportButton />
               <button
                 onClick={handleAddStudent}
@@ -243,33 +285,21 @@ export default function StudentsPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索学生姓名或学号"
+                placeholder="搜索学生姓名或身份证号"
                 className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:bg-white focus:border-[#2dd4bf]/30 focus:outline-none transition-all"
               />
             </div>
           </div>
 
           {selectedIds.length > 0 && (
-            <div className="mt-4 flex items-center justify-between gap-3 bg-white rounded-xl border border-gray-200 p-3 flex-wrap">
+            <div className="flex items-center justify-between gap-3 bg-white rounded-xl border border-gray-200 p-3 flex-wrap">
               <span className="text-sm text-gray-600">已选 {selectedIds.length} 人</span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setBatchExam(examList[examList.length - 1] || '');
-                    setShowBatchScoreModal(true);
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-[#2dd4bf]/10 text-[#2dd4bf] text-xs rounded-lg hover:bg-[#2dd4bf]/20 transition-colors"
-                >
-                  <CheckSquare className="w-3.5 h-3.5" />
-                  批量修改成绩
-                </button>
-                <button
-                  onClick={handleBatchDelete}
-                  className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  批量删除
-                </button>
-              </div>
+              <button
+                onClick={handleBatchDelete}
+                className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100 transition-colors"
+              >
+                批量删除
+              </button>
             </div>
           )}
 
@@ -282,70 +312,104 @@ export default function StudentsPage() {
                       <input
                         type="checkbox"
                         checked={
-                          filteredStudents.length > 0 &&
-                          filteredStudents.every((s) => selectedIds.includes(s.id))
+                          filtered.length > 0 &&
+                          filtered.every((e) => selectedIds.includes(e.student.idCard))
                         }
                         onChange={(e) => {
                           if (e.target.checked) {
                             setSelectedIds((prev) => [
                               ...new Set([
                                 ...prev,
-                                ...filteredStudents.map((s) => s.id),
+                                ...filtered.map((x) => x.student.idCard),
                               ]),
                             ]);
                           } else {
                             setSelectedIds((prev) =>
                               prev.filter(
                                 (id) =>
-                                  !filteredStudents.some((s) => s.id === id)
-                              )
+                                  !filtered.some((x) => x.student.idCard === id),
+                              ),
                             );
                           }
                         }}
                         className="accent-[#2dd4bf]"
                       />
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学生</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学号</th>
-                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">排名</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">学生</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">身份证号</th>
+                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">总分赋分</th>
+                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">班名次</th>
+                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">校名次</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">选科</th>
+                    <th className="px-5 py-3 text-right text-xs font-medium text-gray-500">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((student) => (
-                    <tr key={student.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                  {filtered.map((entry) => (
+                    <tr
+                      key={entry.student.idCard}
+                      className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
+                    >
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
-                          checked={selectedIds.includes(student.id)}
-                          onChange={() => toggleSelect(student.id)}
+                          checked={selectedIds.includes(entry.student.idCard)}
+                          onChange={() => toggleSelect(entry.student.idCard)}
                           className="accent-[#2dd4bf]"
                         />
                       </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-50 text-gray-500">
+                          {entry.classRank || filtered.indexOf(entry) + 1}
+                        </span>
+                      </td>
                       <td className="px-5 py-3">
                         <button
-                          onClick={() => handleOpenStudent(student)}
+                          onClick={() => setSelectedStudent(entry.student)}
                           className="flex items-center gap-3 group"
                         >
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-xs font-medium">
-                            {student.name.charAt(0)}
+                            {entry.student.name.charAt(0)}
                           </div>
                           <span className="text-sm font-medium text-gray-900 group-hover:text-[#2dd4bf] transition-colors">
-                            {student.name}
+                            {entry.student.name}
                           </span>
                         </button>
                       </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">{student.studentNo}</td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-5 py-3 text-sm text-gray-600">{entry.student.idCard}</td>
+                      <td className="px-5 py-3 text-right text-sm font-semibold text-[#1e3a5f]">
+                        {entry.total.toFixed(2)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-sm text-gray-600">
+                        {entry.classRank || '-'}
+                      </td>
+                      <td className="px-5 py-3 text-right text-sm text-gray-600">
+                        {entry.schoolRank || '-'}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-1">
+                          {entry.student.selectedSubjects.map((s) => (
+                            <span
+                              key={s}
+                              className="px-1.5 py-0.5 rounded bg-teal-50 text-teal-600 text-[11px]"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => handleOpenStudent(student)}
+                            onClick={() => setSelectedStudent(entry.student)}
                             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-[#2dd4bf] transition-colors"
-                            title="查看成绩"
+                            title="查看详情"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteStudent(student.id)}
+                            onClick={() => handleDeleteStudent(entry.student.idCard)}
                             className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
                             title="删除"
                           >
@@ -360,29 +424,33 @@ export default function StudentsPage() {
             </div>
 
             <div className="lg:hidden divide-y divide-gray-100">
-              {filteredStudents.map((student) => (
-                <div key={student.id} className="p-4 flex items-center gap-3">
+              {filtered.map((entry) => (
+                <div key={entry.student.idCard} className="p-4 flex items-center gap-3">
                   <input
                     type="checkbox"
-                    checked={selectedIds.includes(student.id)}
-                    onChange={() => toggleSelect(student.id)}
+                    checked={selectedIds.includes(entry.student.idCard)}
+                    onChange={() => toggleSelect(entry.student.idCard)}
                     className="accent-[#2dd4bf] shrink-0"
                   />
                   <button
-                    onClick={() => handleOpenStudent(student)}
+                    onClick={() => setSelectedStudent(entry.student)}
                     className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-sm font-medium shrink-0"
                   >
-                    {student.name.charAt(0)}
+                    {entry.student.name.charAt(0)}
                   </button>
                   <button
-                    onClick={() => handleOpenStudent(student)}
+                    onClick={() => setSelectedStudent(entry.student)}
                     className="flex-1 min-w-0 text-left"
                   >
-                    <span className="text-sm font-medium text-gray-900 truncate">{student.name}</span>
-                    <p className="text-xs text-gray-500 mt-0.5">{student.studentNo}</p>
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {entry.student.name}
+                    </span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      总分 {entry.total.toFixed(2)} · 班第{entry.classRank || '-'}名
+                    </p>
                   </button>
                   <button
-                    onClick={() => handleOpenStudent(student)}
+                    onClick={() => setSelectedStudent(entry.student)}
                     className="p-2 rounded-lg bg-[#2dd4bf]/10 text-[#2dd4bf] text-xs font-medium shrink-0"
                   >
                     详情
@@ -391,7 +459,7 @@ export default function StudentsPage() {
               ))}
             </div>
 
-            {filteredStudents.length === 0 && (
+            {filtered.length === 0 && (
               <div className="py-16 text-center text-gray-400 text-sm">
                 {searchQuery ? '未找到匹配的学生' : '暂无学生数据'}
               </div>
@@ -401,7 +469,10 @@ export default function StudentsPage() {
       </main>
 
       {selectedStudent && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedStudent(null)}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedStudent(null)}
+        >
           <div
             className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -412,9 +483,11 @@ export default function StudentsPage() {
                   {selectedStudent.name.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900">{selectedStudent.name}</h3>
+                  <h3 className="text-base font-semibold text-gray-900">
+                    {selectedStudent.name}
+                  </h3>
                   <p className="text-xs text-gray-500">
-                    {selectedStudent.studentNo} · {activeClass}
+                    {selectedStudent.idCard} · {selectedStudent.classNo}班
                   </p>
                 </div>
               </div>
@@ -427,163 +500,119 @@ export default function StudentsPage() {
             </div>
 
             <div className="p-5 space-y-5">
-              {studentExams.length > 0 ? (
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900">选择考试</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">查看该次考试的成绩与排名</p>
-                  </div>
-                  <select
-                    value={selectedExam}
-                    onChange={(e) => setSelectedExam(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
-                  >
-                    {studentExams.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900">选择考试</h4>
+                  <p className="text-xs text-gray-400 mt-0.5">查看该次考试的成绩与排名</p>
                 </div>
-              ) : (
-                <div className="py-6 text-center text-sm text-gray-400">
-                  暂无成绩数据，请通过 Excel 导入考试成绩
+                <select
+                  value={selectedExam}
+                  onChange={(e) => setSelectedExam(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
+                >
+                  {exams.map((e) => (
+                    <option key={e.id} value={e.name}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedTotal && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-[#1e3a5f] text-white rounded-lg p-3 text-center">
+                    <p className="text-xs text-white/70">总分赋分</p>
+                    <p className="text-xl font-bold mt-1">
+                      {(selectedTotal.assignedScore ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="bg-teal-50 text-teal-700 rounded-lg p-3 text-center">
+                    <p className="text-xs text-teal-600/70">班级排名</p>
+                    <p className="text-xl font-bold mt-1">
+                      {selectedTotal.classRank || '-'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 text-gray-700 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-400">学校排名</p>
+                    <p className="text-xl font-bold mt-1">
+                      {selectedTotal.schoolRank || '-'}
+                    </p>
+                  </div>
                 </div>
               )}
 
-              {selectedExamScores.length > 0 && (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-500">总分</p>
-                      <p className="text-lg font-semibold text-gray-900 mt-1">{selectedTotal}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-500">班级排名</p>
-                      <p className="text-lg font-semibold text-gray-900 mt-1">
-                        {selectedClassRank > 0 ? `第 ${selectedClassRank} 名` : '—'}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-500">学校排名</p>
-                      <p className="text-lg font-semibold text-gray-900 mt-1">
-                        {selectedSchoolRank > 0 ? `第 ${selectedSchoolRank} 名` : '—'}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-500">与上次变化</p>
-                      <div className="flex items-center justify-center mt-1">
-                        {!hasPrev ? (
-                          <span className="text-sm text-gray-400">首次考试</span>
-                        ) : totalDiff > 0 ? (
-                          <span className="flex items-center gap-1 text-emerald-600">
-                            <TrendingUp className="w-4 h-4" />
-                            <span className="text-sm font-medium">+{totalDiff}</span>
-                          </span>
-                        ) : totalDiff < 0 ? (
-                          <span className="flex items-center gap-1 text-red-500">
-                            <TrendingDown className="w-4 h-4" />
-                            <span className="text-sm font-medium">{totalDiff}</span>
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-gray-400">
-                            <Minus className="w-4 h-4" />
-                            <span className="text-sm font-medium">持平</span>
+              <div className="space-y-2">
+                {selectedSubjects.map((subject) => {
+                  const row = subjectScore(scores, selectedStudent.idCard, examId, subject);
+                  const value = scoreValue(row);
+                  const hasAssigned =
+                    row?.assignedScore !== null &&
+                    row?.assignedScore !== undefined &&
+                    selectedStudent.selectedSubjects.includes(subject);
+                  return (
+                    <div
+                      key={subject}
+                      className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg flex-wrap gap-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700">{subject}</span>
+                        {hasAssigned && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-600">
+                            赋分
                           </span>
                         )}
                       </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-sm font-medium text-gray-900">各科成绩</h4>
-                      {selectedExamScores.length > 0 &&
-                        (editMode ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setEditMode(false)}
-                              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                            >
-                              取消
-                            </button>
-                            <button
-                              onClick={handleSaveScores}
-                              className="px-3 py-1.5 bg-[#2dd4bf] text-white text-xs rounded-lg hover:bg-[#14b8a6] transition-colors"
-                            >
-                              保存成绩
-                            </button>
-                          </div>
+                      <div className="flex items-center gap-3">
+                        {hasAssigned ? (
+                          <>
+                            <span className="text-xs text-gray-400">
+                              原始 {row?.rawScore ?? '-'}
+                            </span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {value?.toFixed(2) ?? '-'} 分
+                            </span>
+                          </>
                         ) : (
-                          <button
-                            onClick={() => setEditMode(true)}
-                            className="px-3 py-1.5 bg-[#2dd4bf]/10 text-[#2dd4bf] text-xs rounded-lg hover:bg-[#2dd4bf]/20 transition-colors"
-                          >
-                            编辑成绩
-                          </button>
-                        ))}
+                          <span className="text-sm font-medium text-gray-900">
+                            {value?.toFixed(2) ?? '-'} 分
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400">
+                          班第{row?.classRank || '-'}名 · 校第{row?.schoolRank || '-'}名
+                        </span>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      {SUBJECTS.map((subject) => {
-                        const current = selectedExamScores.find((s) => s.subject === subject);
-                        if (!current) return null;
-                        const prev = prevExamScores.find((s) => s.subject === subject);
-                        const diff = prev ? current.score - prev.score : null;
-                        const fullScore = getFullScore(subject);
-                        const rate = Math.round((current.score / fullScore) * 100);
-                        return (
-                          <div key={subject} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-700">{subject}</span>
-                              {diff !== null && diff !== undefined && (
-                                <span
-                                  className={`text-xs font-medium ${
-                                    diff > 0
-                                      ? 'text-emerald-600'
-                                      : diff < 0
-                                      ? 'text-red-500'
-                                      : 'text-gray-400'
-                                  }`}
-                                >
-                                  {diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ 持平'}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs text-gray-400">满分 {fullScore}</span>
-                              {editMode ? (
-                                <input
-                                  type="number"
-                                  value={scoreDrafts[subject] ?? current.score}
-                                  onChange={(e) =>
-                                    setScoreDrafts((prev) => ({
-                                      ...prev,
-                                      [subject]: Number(e.target.value),
-                                    }))
-                                  }
-                                  className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:border-[#2dd4bf]/50"
-                                />
-                              ) : (
-                                <span className="text-sm font-medium text-gray-900">{current.score} 分</span>
-                              )}
-                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                                rate >= 85 ? 'bg-emerald-50 text-emerald-600' :
-                                rate >= 60 ? 'bg-amber-50 text-amber-600' :
-                                'bg-red-50 text-red-500'
-                              }`}>
-                                {rate}%
-                              </span>
-                              {current.subjectRank > 0 && (
-                                <span className="text-xs text-gray-400">班内第 {current.subjectRank} 名</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  );
+                })}
+              </div>
+
+              <div className="border-t border-gray-100 pt-5">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">家长信息</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {(
+                    [
+                      ['父亲姓名', 'fatherName'],
+                      ['父亲电话', 'fatherPhone'],
+                      ['父亲微信', 'fatherWechat'],
+                      ['母亲姓名', 'motherName'],
+                      ['母亲电话', 'motherPhone'],
+                      ['母亲微信', 'motherWechat'],
+                    ] as const
+                  ).map(([label, key]) => (
+                    <div key={key}>
+                      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                      <input
+                        type="text"
+                        value={parentDraft[key]}
+                        onChange={(e) =>
+                          setParentDraft((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                      />
                     </div>
-                  </div>
-                </>
-              )}
+                  ))}
+                </div>
+              </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -593,132 +622,33 @@ export default function StudentsPage() {
                 <textarea
                   value={remarkDraft}
                   onChange={(e) => setRemarkDraft(e.target.value)}
-                  placeholder="输入对该学生的备注，如学习状态、家长沟通要点、需要关注的事项等..."
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 focus:ring-2 focus:ring-[#2dd4bf]/10 resize-none"
+                  placeholder="输入对该学生的备注，如学习状态、家长沟通要点等"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none"
                 />
-                <div className="flex justify-end gap-2 mt-2">
-                  <button
-                    onClick={() => setRemarkDraft('')}
-                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    重置
-                  </button>
-                  <button
-                    onClick={handleSaveRemark}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-[#2dd4bf] text-white text-xs rounded-lg hover:bg-[#14b8a6] transition-colors"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    保存备注
-                  </button>
-                </div>
               </div>
             </div>
 
             <div className="p-5 border-t border-gray-100 flex justify-end gap-2">
               <button
-                onClick={() => navigate(`/student/${selectedStudent.id}`)}
+                onClick={() => setSelectedStudent(null)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                关闭
+              </button>
+              <button
+                onClick={() => navigate(`/student/${selectedStudent.idCard}`)}
                 className="px-4 py-2 text-sm text-[#2dd4bf] border border-[#2dd4bf]/30 rounded-lg hover:bg-[#2dd4bf]/5 transition-colors"
               >
                 查看完整档案
               </button>
               <button
-                onClick={() => setSelectedStudent(null)}
-                className="px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
+                onClick={handleSaveStudentInfo}
+                className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
               >
-                关闭
+                <Save className="w-4 h-4" />
+                保存
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showBatchScoreModal && (
-        <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowBatchScoreModal(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">批量修改成绩</h3>
-              <button
-                onClick={() => setShowBatchScoreModal(false)}
-                className="p-1 rounded hover:bg-gray-100"
-              >
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">考试</label>
-                <select
-                  value={batchExam}
-                  onChange={(e) => setBatchExam(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
-                >
-                  {examList.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">科目</label>
-                <select
-                  value={batchSubject}
-                  onChange={(e) => setBatchSubject(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
-                >
-                  {SUBJECTS.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">方式</label>
-                  <select
-                    value={batchMode}
-                    onChange={(e) =>
-                      setBatchMode(e.target.value as 'set' | 'add' | 'subtract')
-                    }
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
-                  >
-                    <option value="set">设为</option>
-                    <option value="add">加</option>
-                    <option value="subtract">减</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">数值</label>
-                  <input
-                    type="number"
-                    value={batchValue}
-                    onChange={(e) => setBatchValue(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowBatchScoreModal(false)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleBatchSaveScores}
-                  className="flex-1 px-4 py-2 rounded-lg bg-[#2dd4bf] text-white text-sm hover:bg-[#14b8a6] transition-colors"
-                >
-                  保存
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -730,7 +660,7 @@ export default function StudentsPage() {
           onClick={() => setShowAddModal(false)}
         >
           <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
@@ -743,35 +673,83 @@ export default function StudentsPage() {
               </button>
             </div>
             <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">姓名</label>
+                  <input
+                    type="text"
+                    value={addForm.name}
+                    onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="学生姓名"
+                    autoFocus
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">班级</label>
+                  <input
+                    type="number"
+                    value={addForm.classNo}
+                    onChange={(e) =>
+                      setAddForm((p) => ({ ...p, classNo: Number(e.target.value) }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">姓名</label>
+                <label className="block text-sm text-gray-600 mb-1">身份证号</label>
                 <input
                   type="text"
-                  value={addName}
-                  onChange={(e) => setAddName(e.target.value)}
-                  placeholder="请输入学生姓名"
-                  autoFocus
+                  value={addForm.idCard}
+                  onChange={(e) => setAddForm((p) => ({ ...p, idCard: e.target.value }))}
+                  placeholder="18位身份证号"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">学号</label>
-                <input
-                  type="text"
-                  value={addStudentNo}
-                  onChange={(e) => setAddStudentNo(e.target.value)}
-                  placeholder="请输入学号"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
-                />
+                <label className="block text-sm text-gray-600 mb-2">选考科目（选3门）</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SELECTABLE.map((subject) => {
+                    const active = addForm.selectedSubjects.includes(subject);
+                    return (
+                      <button
+                        key={subject}
+                        type="button"
+                        onClick={() => toggleSelectedSubject(subject)}
+                        className={`px-3 py-2 rounded-lg text-sm border transition-all ${
+                          active
+                            ? 'bg-[#2dd4bf]/10 border-[#2dd4bf]/40 text-[#2dd4bf] font-medium'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {subject}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">班级</label>
-                <input
-                  type="text"
-                  value={activeClass}
-                  readOnly
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {(
+                  [
+                    ['父亲姓名', 'fatherName'],
+                    ['父亲电话', 'fatherPhone'],
+                    ['父亲微信', 'fatherWechat'],
+                    ['母亲姓名', 'motherName'],
+                    ['母亲电话', 'motherPhone'],
+                    ['母亲微信', 'motherWechat'],
+                  ] as const
+                ).map(([label, key]) => (
+                  <div key={key}>
+                    <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                    <input
+                      type="text"
+                      value={addForm[key]}
+                      onChange={(e) => setAddForm((p) => ({ ...p, [key]: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                    />
+                  </div>
+                ))}
               </div>
               <div className="flex gap-3 pt-2">
                 <button

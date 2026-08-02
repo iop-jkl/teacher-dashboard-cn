@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, User, LogOut, CalendarPlus, Trash2 } from 'lucide-react';
+import { CalendarPlus, GraduationCap, LogOut, Save, Trash2, User, KeyRound } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
@@ -13,49 +13,28 @@ export default function SettingsPage() {
     sidebarOpen,
     openSidebar,
     closeSidebar,
-    userSettings: storeSettings,
-    updateSettings,
-    examList,
+    exams,
     addExam,
     removeExam,
     updateExamDate,
+    classTeachers,
+    updateClassTeacher,
   } = useStore();
-  const navigate = useNavigate();
+  const session = useAuthStore((s) => s.session);
   const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
   const showToast = useToastStore((s) => s.showToast);
 
-  const [localSettings, setLocalSettings] = useState(storeSettings);
-  const [saved, setSaved] = useState(false);
   const [newExamName, setNewExamName] = useState('');
   const [newExamDate, setNewExamDate] = useState(
-    new Date().toISOString().split('T')[0]
+    new Date().toISOString().split('T')[0],
   );
-  const initialSettings = useRef(storeSettings);
+  const [teacherDrafts, setTeacherDrafts] = useState<Record<number, { teacherName: string; password: string }>>({});
 
-  useEffect(() => {
-    initialSettings.current = storeSettings;
-    setLocalSettings(storeSettings);
-  }, [storeSettings]);
-
-  const setField = <K extends keyof typeof localSettings>(
-    key: K,
-    value: (typeof localSettings)[K]
-  ) => {
-    setLocalSettings((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleSave = () => {
-    updateSettings(localSettings);
-    initialSettings.current = { ...localSettings };
-    setSaved(true);
-    showToast('设置已保存', 'success');
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleCancel = () => {
-    setLocalSettings(initialSettings.current);
-    showToast('已取消修改', 'info');
-  };
+  const isAdmin = session?.role === 'admin';
+  const visibleTeachers = isAdmin
+    ? classTeachers
+    : classTeachers.filter((t) => t.classNo === session?.classNo);
 
   const handleLogout = () => {
     logout();
@@ -68,7 +47,7 @@ export default function SettingsPage() {
       showToast('请输入考试名称', 'info');
       return;
     }
-    if (examList.includes(newExamName.trim())) {
+    if (exams.some((e) => e.name === newExamName.trim())) {
       showToast('考试已存在', 'info');
       return;
     }
@@ -77,10 +56,20 @@ export default function SettingsPage() {
     showToast('考试已添加', 'success');
   };
 
-  const handleRemoveExam = (name: string) => {
-    if (!window.confirm(`确认删除考试“${name}”及其全部成绩？`)) return;
-    removeExam(name);
+  const handleRemoveExam = (id: string, name: string) => {
+    if (!window.confirm(`确认删除考试“${name}”及该考试全部成绩？`)) return;
+    removeExam(id);
     showToast('考试已删除', 'success');
+  };
+
+  const saveTeacher = (classNo: number) => {
+    const draft = teacherDrafts[classNo];
+    if (!draft) return;
+    updateClassTeacher(classNo, {
+      teacherName: draft.teacherName,
+      password: draft.password,
+    });
+    showToast(`${classNo}班班主任信息已保存`, 'success');
   };
 
   return (
@@ -100,7 +89,7 @@ export default function SettingsPage() {
               </button>
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">设置</h2>
-                <p className="text-xs text-gray-500 mt-0.5">偏好与账户管理</p>
+                <p className="text-xs text-gray-500 mt-0.5">账号、班主任与考试管理</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -109,45 +98,105 @@ export default function SettingsPage() {
           </div>
         </header>
 
-        <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-3xl">
+        <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-4xl">
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
                 <User className="w-5 h-5 text-blue-600" />
               </div>
-              <h3 className="text-base font-semibold text-gray-900">个人信息</h3>
+              <h3 className="text-base font-semibold text-gray-900">当前账号</h3>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">姓名</label>
-                <input
-                  type="text"
-                  value={localSettings.teacherName}
-                  onChange={(e) => setField('teacherName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 focus:ring-2 focus:ring-[#2dd4bf]/10"
-                  placeholder="请输入姓名"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-400">账号</p>
+                <p className="text-sm font-medium text-gray-900 mt-1">
+                  {session?.username}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-400">身份</p>
+                <p className="text-sm font-medium text-gray-900 mt-1">
+                  {isAdmin ? '管理员（全部班级）' : `${session?.classNo}班班主任`}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-400">姓名</p>
+                <p className="text-sm font-medium text-gray-900 mt-1">
+                  {session?.teacherName}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center">
+                <GraduationCap className="w-5 h-5 text-teal-600" />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">班级</label>
-                <input
-                  type="text"
-                  value={localSettings.className}
-                  onChange={(e) => setField('className', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 focus:ring-2 focus:ring-[#2dd4bf]/10"
-                  placeholder="请输入班级"
-                />
+                <h3 className="text-base font-semibold text-gray-900">班主任账号</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {isAdmin ? '可管理全部班级的账号、密码与姓名' : '修改自己班级的账号信息'}
+                </p>
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm text-gray-600 mb-1">职务</label>
-                <input
-                  type="text"
-                  value={localSettings.position}
-                  onChange={(e) => setField('position', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 focus:ring-2 focus:ring-[#2dd4bf]/10"
-                  placeholder="请输入职务"
-                />
-              </div>
+            </div>
+
+            <div className="space-y-2">
+              {visibleTeachers.map((t) => {
+                const draft = teacherDrafts[t.classNo] || {
+                  teacherName: t.teacherName,
+                  password: t.password,
+                };
+                return (
+                  <div
+                    key={t.classNo}
+                    className="flex items-center gap-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2"
+                  >
+                    <span className="w-16 text-sm font-medium text-gray-800">
+                      {t.classNo}班
+                    </span>
+                    <input
+                      type="text"
+                      value={draft.teacherName}
+                      onChange={(e) =>
+                        setTeacherDrafts((prev) => ({
+                          ...prev,
+                          [t.classNo]: { ...draft, teacherName: e.target.value },
+                        }))
+                      }
+                      placeholder="班主任姓名"
+                      className="flex-1 min-w-[120px] px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/40"
+                    />
+                    <div className="relative">
+                      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        type="text"
+                        value={draft.password}
+                        onChange={(e) =>
+                          setTeacherDrafts((prev) => ({
+                            ...prev,
+                            [t.classNo]: { ...draft, password: e.target.value },
+                          }))
+                        }
+                        placeholder="密码"
+                        className="w-32 pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/40"
+                      />
+                    </div>
+                    <button
+                      onClick={() => saveTeacher(t.classNo)}
+                      className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf]/10 text-[#2dd4bf] text-xs rounded-lg hover:bg-[#2dd4bf]/20 transition-colors"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      保存
+                    </button>
+                  </div>
+                );
+              })}
+              {visibleTeachers.length === 0 && (
+                <div className="py-6 text-center text-sm text-gray-400">
+                  暂无班主任账号
+                </div>
+              )}
             </div>
           </div>
 
@@ -160,30 +209,30 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              {examList.map((name) => (
+              {exams.map((exam) => (
                 <div
-                  key={name}
+                  key={exam.id}
                   className="flex items-center gap-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2"
                 >
                   <div className="flex-1 min-w-[120px]">
-                    <p className="text-sm font-medium text-gray-800">{name}</p>
+                    <p className="text-sm font-medium text-gray-800">{exam.name}</p>
                   </div>
                   <input
                     type="date"
-                    value={storeSettings.examDates[name] || ''}
-                    onChange={(e) => updateExamDate(name, e.target.value)}
+                    value={exam.date || ''}
+                    onChange={(e) => updateExamDate(exam.id, e.target.value)}
                     className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2dd4bf]/40"
                   />
                   <button
-                    onClick={() => handleRemoveExam(name)}
+                    onClick={() => handleRemoveExam(exam.id, exam.name)}
                     className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                    aria-label={`删除${name}`}
+                    aria-label={`删除${exam.name}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
-              {examList.length === 0 && (
+              {exams.length === 0 && (
                 <div className="py-6 text-center text-sm text-gray-400">
                   暂无考试，请先添加
                 </div>
@@ -195,7 +244,7 @@ export default function SettingsPage() {
                 type="text"
                 value={newExamName}
                 onChange={(e) => setNewExamName(e.target.value)}
-                placeholder="考试名称，如：期末考"
+                placeholder="考试名称，如：期末考试"
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
               />
               <input
@@ -214,32 +263,13 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              退出登录
-            </button>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleCancel}
-                className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSave}
-                className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white transition-colors ${
-                  saved ? 'bg-emerald-500' : 'bg-[#2dd4bf] hover:bg-[#14b8a6]'
-                }`}
-              >
-                <Save className="w-4 h-4" />
-                {saved ? '已保存' : '保存设置'}
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            退出登录
+          </button>
         </div>
       </main>
     </div>

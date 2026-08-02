@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, LogOut, User } from 'lucide-react';
-import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 
 export default function UserMenu() {
   const navigate = useNavigate();
-  const teacherName = useStore((s) => s.userSettings.teacherName);
-  const className = useStore((s) => s.userSettings.className);
-  const position = useStore((s) => s.userSettings.position);
+  const session = useAuthStore((s) => s.session);
   const logout = useAuthStore((s) => s.logout);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -30,6 +27,11 @@ export default function UserMenu() {
     };
   }, []);
 
+  const teacherName = session?.teacherName || '用户';
+  const subtitle =
+    session?.role === 'admin'
+      ? '管理员 · 全部班级'
+      : `${session?.classNo ?? ''}班 · 班主任`;
   const initial = Array.from(teacherName.trim())[0] || '师';
 
   const handleLogout = () => {
@@ -56,9 +58,7 @@ export default function UserMenu() {
         <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl shadow-lg border border-gray-100 z-50 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
             <p className="text-sm font-semibold text-gray-900 truncate">{teacherName}</p>
-            <p className="text-xs text-gray-500 mt-0.5 truncate">
-              {className} · {position}
-            </p>
+            <p className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</p>
           </div>
           <div className="p-1.5">
             <button
@@ -69,7 +69,7 @@ export default function UserMenu() {
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
               <User className="w-4 h-4 text-gray-400" />
-              个人信息
+              账号与设置
             </button>
             <button
               onClick={handleLogout}
