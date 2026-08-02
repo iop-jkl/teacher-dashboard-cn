@@ -131,7 +131,7 @@ export function recomputeClassRanks(
           classStudents.some((st) => st.idCard === s.studentId),
       );
       const useAssigned =
-        subject !== '总分' && rows.some((r) => r.assignedScore !== null);
+        subject === '总分' || rows.some((r) => r.assignedScore !== null);
       const rankMap = assignStandardRanks(
         rows.map((r) => ({
           id: r.studentId,
