@@ -39,7 +39,7 @@ export default function StudentTable({
     return students
       .map((student) => {
         const totalRow = subjectScore(scores, student.idCard, activeExamId, '总分');
-        const total = totalRow?.assignedScore ?? 0;
+        const total = totalRow ? (scoreValue(totalRow) ?? 0) : 0;
         const subjectTotals: Record<string, number | null> = {};
         for (const subject of ['语文', '数学', '英语', ...student.selectedSubjects]) {
           subjectTotals[subject] = scoreValue(

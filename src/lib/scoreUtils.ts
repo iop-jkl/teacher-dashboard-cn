@@ -27,8 +27,9 @@ export function totalFor(
   examId: string,
 ): number {
   const totalRow = subjectScore(scores, studentId, examId, '总分');
-  if (totalRow && totalRow.assignedScore !== null) {
-    return totalRow.assignedScore;
+  const total = totalRow ? scoreValue(totalRow) : null;
+  if (total !== null) {
+    return total;
   }
   return subjectComponents(scores, studentId, examId, true);
 }
@@ -141,8 +142,7 @@ export function recomputeClassRanks(
           s.subject === subject &&
           classStudents.some((st) => st.idCard === s.studentId),
       );
-      const useAssigned =
-        subject === '总分' || rows.some((r) => r.assignedScore !== null);
+      const useAssigned = rows.some((r) => r.assignedScore !== null);
       const rankMap = assignStandardRanks(
         rows.map((r) => ({
           id: r.studentId,
@@ -188,8 +188,8 @@ export function recomputeTotalRows(
       studentId: student.idCard,
       examId,
       subject: '总分',
-      rawScore: null,
-      assignedScore: total,
+      rawScore: total,
+      assignedScore: null,
       schoolRank: schoolRankById.get(student.idCard) ?? 0,
       classRank: 0,
     });

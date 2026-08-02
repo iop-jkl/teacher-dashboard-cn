@@ -571,7 +571,7 @@ export default function StudentsPage() {
                   <div className="bg-[#1e3a5f] text-white rounded-lg p-3 text-center">
                     <p className="text-xs text-white/70">总分赋分</p>
                     <p className="text-xl font-bold mt-1">
-                      {(selectedTotal.assignedScore ?? 0).toFixed(2)}
+                      {(scoreValue(selectedTotal) ?? 0).toFixed(2)}
                     </p>
                   </div>
                   <div className="bg-teal-50 text-teal-700 rounded-lg p-3 text-center">

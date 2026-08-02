@@ -47,13 +47,13 @@ for (const s of students) {
         : x.raw_score;
       return sum + (v == null ? 0 : v);
     }, 0);
-  if (Math.abs(compTotal - (totalRow.assigned_score || 0)) > 0.05) {
+  if (Math.abs(compTotal - (totalRow.raw_score || 0)) > 0.05) {
     totalDiff++;
     if (totalDiff <= 5) {
-      console.log('total mismatch', s.id_card, compTotal, totalRow.assigned_score);
+      console.log('total mismatch', s.id_card, compTotal, totalRow.raw_score);
     }
   }
-  if ((totalRow.assigned_score || 0) === 0) absent++;
+  if ((totalRow.raw_score || 0) === 0) absent++;
 }
 console.log('invalid students:', bad, { absent, nullAssigned, totalDiff, other });
 
@@ -64,7 +64,7 @@ const c1 = scores
   .sort((a, b) => a.class_rank - b.class_rank);
 console.log(
   'class1 top5:',
-  c1.slice(0, 5).map((x) => `${x.class_rank}:${x.assigned_score}:${byId.get(x.student_id)?.name}`),
+  c1.slice(0, 5).map((x) => `${x.class_rank}:${x.raw_score}:${byId.get(x.student_id)?.name}`),
 );
 console.log('class1 max rank:', c1[c1.length - 1]?.class_rank, 'count:', c1.length);
 

@@ -97,8 +97,8 @@ for (const r of data) {
     student_id: idCard,
     exam_id: EXAM_ID,
     subject: '总分',
-    raw_score: null,
-    assigned_score: num(r[9]),
+    raw_score: num(r[9]),
+    assigned_score: null,
     school_rank: num(r[10]) ?? 0,
     class_rank: 0,
   });
@@ -142,8 +142,8 @@ for (const subject of SUBJECTS) {
     rankGroups.get(groupKey).push(entry);
   }
 }
-const totalRankGroup = `${'总分'}|true`;
-for (const entry of rankKey('总分', true)) {
+const totalRankGroup = `${'总分'}|false`;
+for (const entry of rankKey('总分', false)) {
   const groupKey = `${totalRankGroup}|${entry.classNo}`;
   if (!rankGroups.has(groupKey)) rankGroups.set(groupKey, []);
   rankGroups.get(groupKey).push(entry);

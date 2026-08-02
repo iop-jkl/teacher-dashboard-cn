@@ -123,7 +123,9 @@ export default function StudentDetail() {
               <div className="text-right">
                 <p className="text-sm text-gray-500">{effectiveExam} 总分赋分</p>
                 <p className="text-3xl font-bold text-[#2dd4bf] mt-1">
-                  {totalRow?.assignedScore != null ? totalRow.assignedScore.toFixed(2) : '-'}
+                  {totalRow && scoreValue(totalRow) != null
+                    ? Number(scoreValue(totalRow)).toFixed(2)
+                    : '-'}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   班第{totalRow?.classRank || '-'}名 · 校第{totalRow?.schoolRank || '-'}名
