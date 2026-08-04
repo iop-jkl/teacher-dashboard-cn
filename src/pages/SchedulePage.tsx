@@ -3,7 +3,8 @@ import { Calendar, Plus, ChevronLeft, ChevronRight, Clock, MapPin, Users, X } fr
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
-import { useStore, type ScheduleEvent } from '@/store/useStore';
+import { useStore, canModifyRow, type ScheduleEvent } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 
 const typeColors = {
@@ -16,6 +17,7 @@ const typeColors = {
 export default function SchedulePage() {
   const { sidebarOpen, openSidebar, closeSidebar, scheduleEvents, addScheduleEvent, removeScheduleEvent } = useStore();
   const showToast = useToastStore((s) => s.showToast);
+  const session = useAuthStore((s) => s.session);
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth()));
   const [showAddModal, setShowAddModal] = useState(false);
@@ -91,13 +93,15 @@ export default function SchedulePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                添加日程
-              </button>
+              {session?.role !== 'student' && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  添加日程
+                </button>
+              )}
               <UserMenu />
             </div>
           </div>
@@ -149,7 +153,7 @@ export default function SchedulePage() {
                         <div
                           key={`${wi}-${di}`}
                           onClick={() => {
-                            if (events.length > 0) {
+                            if (events.length > 0 && canModifyRow(events[0].owner, session)) {
                               handleDeleteEvent(events[0].id);
                             }
                           }}
@@ -197,9 +201,15 @@ export default function SchedulePage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteEvent(event.id);
+                            if (canModifyRow(event.owner, session)) {
+                              handleDeleteEvent(event.id);
+                            }
                           }}
-                          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/50 transition-opacity"
+                          className={`absolute top-1.5 right-1.5 p-0.5 rounded hover:bg-white/50 transition-opacity ${
+                            canModifyRow(event.owner, session)
+                              ? 'opacity-0 group-hover:opacity-100'
+                              : 'hidden'
+                          }`}
                         >
                           <X className="w-3 h-3 text-gray-400" />
                         </button>
@@ -233,13 +243,15 @@ export default function SchedulePage() {
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="w-full flex items-center justify-center gap-1 text-xs text-[#2dd4bf] hover:underline py-2"
-                >
-                  <Plus className="w-3 h-3" />
-                  新建日程
-                </button>
+                {session?.role !== 'student' && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="w-full flex items-center justify-center gap-1 text-xs text-[#2dd4bf] hover:underline py-2"
+                  >
+                    <Plus className="w-3 h-3" />
+                    新建日程
+                  </button>
+                )}
               </div>
             </div>
           </div>

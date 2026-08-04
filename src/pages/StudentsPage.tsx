@@ -8,11 +8,14 @@ import {
   X,
   Save,
   Eye,
+  KeyRound,
+  Copy,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ToastContainer from '@/components/ToastContainer';
 import ExcelExportButton from '@/components/ExcelExportButton';
+import Pagination from '@/components/Pagination';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
@@ -23,6 +26,7 @@ import {
   scoreValue,
 } from '@/lib/scoreUtils';
 import type { Student } from '@/types';
+import { generatePassword, resetPassword } from '@/lib/password';
 
 const SELECTABLE = ['政治', '历史', '地理', '物理', '化学', '生物'];
 
@@ -41,12 +45,21 @@ export default function StudentsPage() {
     updateExamScores,
     activeClass,
     setActiveClass,
+    loadScoresForClass,
+    loadScoresForStudent,
+    loadAllScores,
+    scoresLoading,
+    loadedScoreClasses,
   } = useStore();
   const session = useAuthStore((s) => s.session);
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
 
   const isAdmin = session?.role === 'admin';
+  const allClassCount = useMemo(
+    () => new Set(students.map((s) => s.classNo)).size,
+    [students],
+  );
 
   useEffect(() => {
     if (!isAdmin && session?.classNo) {
@@ -54,8 +67,20 @@ export default function StudentsPage() {
     }
   }, [isAdmin, session?.classNo, setActiveClass]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (activeClass > 0) loadScoresForClass(activeClass);
+    if (activeClass === 0) loadAllScores();
+  }, [isAdmin, activeClass, loadScoresForClass, loadAllScores]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  useEffect(() => {
+    if (selectedStudent) {
+      loadScoresForStudent(selectedStudent.idCard);
+    }
+  }, [selectedStudent, loadScoresForStudent]);
   const [selectedExam, setSelectedExam] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [scoreDrafts, setScoreDrafts] = useState<
@@ -72,6 +97,11 @@ export default function StudentsPage() {
   });
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(0);
+  const [resetPasswordInfo, setResetPasswordInfo] = useState<
+    { name: string; idCard: string; password: string } | null
+  >(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [addForm, setAddForm] = useState({
     name: '',
     idCard: '',
@@ -90,11 +120,15 @@ export default function StudentsPage() {
     for (const s of students) set.add(s.classNo);
     const list = [...set].sort((a, b) => a - b);
     return isAdmin ? [0, ...list] : list;
-  }, [students]);
+  }, [students, isAdmin]);
 
   const classStudents = useMemo(
     () =>
-      activeClass === 0 ? students : students.filter((s) => s.classNo === activeClass),
+      activeClass === 0
+        ? students
+        : activeClass === -1
+          ? students.filter((s) => s.classNo === 0)
+          : students.filter((s) => s.classNo === activeClass),
     [students, activeClass],
   );
 
@@ -102,7 +136,7 @@ export default function StudentsPage() {
   const scoreIndex = useMemo(() => buildScoreIndex(scores), [scores]);
 
   const ranked = useMemo(() => {
-    if (!latestExam) return [];
+    if (!latestExam || activeClass === -1) return [];
     return rankClassStudentsIndexed(
       students,
       scoreIndex,
@@ -125,6 +159,18 @@ export default function StudentsPage() {
   }, [ranked, searchQuery]);
 
   useEffect(() => {
+    setPage(0);
+  }, [searchQuery, activeClass]);
+
+  const PAGE_SIZE = 100;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedFiltered = filtered.slice(
+    currentPage * PAGE_SIZE,
+    currentPage * PAGE_SIZE + PAGE_SIZE,
+  );
+
+  useEffect(() => {
     if (!selectedStudent) return;
     const examsForStudent = exams;
     setSelectedExam(examsForStudent[examsForStudent.length - 1]?.name || '');
@@ -139,6 +185,7 @@ export default function StudentsPage() {
     });
     setEditMode(false);
     setScoreDrafts({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStudent?.idCard, exams]);
 
   const examId = exams.find((e) => e.name === selectedExam)?.id || '';
@@ -160,6 +207,33 @@ export default function StudentsPage() {
     removeStudent(idCard);
     setSelectedIds((prev) => prev.filter((x) => x !== idCard));
     showToast('学生已删除', 'info');
+  };
+
+  const handleResetStudentPassword = async (student: Student) => {
+    if (!window.confirm(`确认重置学生“${student.name}”的登录密码？`)) return;
+    setResettingPassword(true);
+    try {
+      const newPassword = generatePassword();
+      const res = await resetPassword(
+        `s${student.idCard.toUpperCase()}@school.local`,
+        newPassword,
+      );
+      if (!res.ok) {
+        showToast(res.error || '重置失败', 'error');
+        return;
+      }
+      setResetPasswordInfo({
+        name: student.name,
+        idCard: student.idCard,
+        password: newPassword,
+      });
+      showToast('密码已重置', 'success');
+    } catch (e) {
+      console.error('重置密码失败:', e);
+      showToast('重置失败，请稍后重试', 'error');
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   const handleBatchDelete = () => {
@@ -263,6 +337,7 @@ export default function StudentsPage() {
       idCard: addForm.idCard.trim(),
       name: addForm.name.trim(),
       classNo: addForm.classNo,
+      grade: '高一',
       selectedSubjects: addForm.selectedSubjects,
       fatherName: addForm.fatherName.trim(),
       fatherPhone: addForm.fatherPhone.trim(),
@@ -303,8 +378,12 @@ export default function StudentsPage() {
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">学生管理</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {activeClass === 0 ? '全部班级' : `${activeClass}班`} · 共{' '}
-                  {classStudents.length} 名学生
+                  {activeClass === 0
+                    ? '全部班级'
+                    : activeClass === -1
+                      ? '待分班'
+                      : `${activeClass}班`}{' '}
+                  · 共 {classStudents.length} 名学生
                 </p>
               </div>
             </div>
@@ -321,6 +400,9 @@ export default function StudentsPage() {
                       {cls === 0 ? '全部班级' : `${cls}班`}
                     </option>
                   ))}
+                  {students.some((s) => s.classNo === 0) && (
+                    <option value={-1}>待分班</option>
+                  )}
                 </select>
               )}
               <ExcelExportButton />
@@ -395,6 +477,7 @@ export default function StudentsPage() {
                       />
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">学生</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">年级</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">身份证号</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">班级</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">选科</th>
@@ -402,7 +485,7 @@ export default function StudentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((entry) => (
+                  {pagedFiltered.map((entry) => (
                     <tr
                       key={entry.student.idCard}
                       className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
@@ -428,8 +511,13 @@ export default function StudentsPage() {
                           </span>
                         </button>
                       </td>
+                      <td className="px-5 py-3">
+                        <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[11px]">
+                          {entry.student.grade || '高一'}
+                        </span>
+                      </td>
                       <td className="px-5 py-3 text-sm text-gray-600">{entry.student.idCard}</td>
-                      <td className="px-5 py-3 text-sm text-gray-600">{entry.student.classNo}班</td>
+                      <td className="px-5 py-3 text-sm text-gray-600">{entry.student.classNo === 0 ? '待分班' : `${entry.student.classNo}班`}</td>
                       <td className="px-5 py-3">
                         <div className="flex gap-1">
                           {entry.student.selectedSubjects.map((s) => (
@@ -467,7 +555,7 @@ export default function StudentsPage() {
             </div>
 
             <div className="lg:hidden divide-y divide-gray-100">
-              {filtered.map((entry) => (
+              {pagedFiltered.map((entry) => (
                 <div key={entry.student.idCard} className="p-4 flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -489,7 +577,7 @@ export default function StudentsPage() {
                       {entry.student.name}
                     </span>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {entry.student.classNo}班 · {entry.student.idCard}
+                      {entry.student.grade || '高一'} · {entry.student.classNo === 0 ? '待分班' : `${entry.student.classNo}班`} · {entry.student.idCard}
                     </p>
                   </button>
                   <button
@@ -502,10 +590,29 @@ export default function StudentsPage() {
               ))}
             </div>
 
-            {filtered.length === 0 && (
+            {scoresLoading.includes(activeClass) && activeClass !== 0 ? (
+              <div className="py-16 text-center text-gray-400 text-sm">
+                正在加载成绩数据…
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="py-16 text-center text-gray-400 text-sm">
                 {searchQuery ? '未找到匹配的学生' : '暂无学生数据'}
               </div>
+            ) : (
+              <>
+                {activeClass === 0 && scoresLoading.includes(0) && (
+                  <p className="text-xs text-gray-400 mb-3">
+                    正在加载全部班级成绩…（已加载 {loadedScoreClasses.length}/{allClassCount}{' '}
+                    个班级）
+                  </p>
+                )}
+                <Pagination
+                  page={currentPage}
+                  total={filtered.length}
+                  pageSize={PAGE_SIZE}
+                  onChange={setPage}
+                />
+              </>
             )}
           </div>
         </div>
@@ -734,6 +841,16 @@ export default function StudentsPage() {
               >
                 关闭
               </button>
+              {session?.role === 'teacher' && (
+                <button
+                  onClick={() => handleResetStudentPassword(selectedStudent)}
+                  disabled={resettingPassword}
+                  className="flex items-center gap-1 px-4 py-2 text-sm text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  {resettingPassword ? '重置中...' : '重置密码'}
+                </button>
+              )}
               <button
                 onClick={() => navigate(`/student/${selectedStudent.idCard}`)}
                 className="px-4 py-2 text-sm text-[#2dd4bf] border border-[#2dd4bf]/30 rounded-lg hover:bg-[#2dd4bf]/5 transition-colors"
@@ -872,6 +989,53 @@ export default function StudentsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {resetPasswordInfo && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setResetPasswordInfo(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                <KeyRound className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">密码已重置</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {resetPasswordInfo.name}（{resetPasswordInfo.idCard}）
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">
+              初始随机密码如下，请告知学生本人，并提醒其登录后尽快修改：
+            </p>
+            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-4 py-3 mb-4">
+              <code className="flex-1 text-base font-bold text-gray-900 tracking-wide">
+                {resetPasswordInfo.password}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(resetPasswordInfo.password);
+                  showToast('已复制', 'success');
+                }}
+                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+                title="复制密码"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+            <button
+              onClick={() => setResetPasswordInfo(null)}
+              className="w-full px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm hover:bg-[#162c48] transition-colors"
+            >
+              我知道了
+            </button>
           </div>
         </div>
       )}

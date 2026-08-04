@@ -40,8 +40,15 @@ export default function ExcelImportModal({ onClose }: Props) {
 
   const handleConfirm = () => {
     if (!parsed || !examDate) return;
-    importExamFromExcel(parsed, examDate);
-    showToast(`已导入考试“${parsed.examName}”`, 'success');
+    const res = importExamFromExcel(parsed, examDate);
+    if (res.ignored > 0) {
+      showToast(
+        `已导入考试“${parsed.examName}”（本班 ${res.imported} 人），忽略非本班数据 ${res.ignored} 条`,
+        'info',
+      );
+    } else {
+      showToast(`已导入考试“${parsed.examName}”`, 'success');
+    }
     onClose();
   };
 

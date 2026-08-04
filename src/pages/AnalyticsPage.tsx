@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { TrendingUp, Award, Menu } from 'lucide-react';
 import {
   BarChart,
@@ -38,9 +38,18 @@ export default function AnalyticsPage() {
     setActiveClass,
     currentExamIndex,
     setCurrentExamIndex,
+    gradeSummary,
+    scoresLoading,
+    loadedScoreClasses,
+    loadAllScores,
+    loadScoresForClass,
   } = useStore();
   const session = useAuthStore((s) => s.session);
   const isAdmin = session?.role === 'admin';
+  const allClassCount = useMemo(
+    () => new Set(students.map((s) => s.classNo)).size,
+    [students],
+  );
   const [activeView, setActiveView] = useState<ViewType>('trend');
 
   const examIndex = Math.min(Math.max(currentExamIndex, 0), examList.length - 1);
@@ -52,7 +61,7 @@ export default function AnalyticsPage() {
     for (const s of students) set.add(s.classNo);
     const list = [...set].sort((a, b) => a - b);
     return isAdmin ? [0, ...list] : list;
-  }, [students]);
+  }, [students, isAdmin]);
 
   const classStudents = useMemo(
     () =>
@@ -67,6 +76,27 @@ export default function AnalyticsPage() {
   );
 
   const historyData = useMemo(() => {
+    if (gradeSummary.length > 0) {
+      const rows = gradeSummary.filter(
+        (r) => activeClass === 0 || r.classNo === activeClass,
+      );
+      const byExam = new Map<string, { sum: number; cnt: number }>();
+      for (const r of rows) {
+        if (r.totalAvg == null) continue;
+        const cur = byExam.get(r.examId) ?? { sum: 0, cnt: 0 };
+        byExam.set(r.examId, {
+          sum: cur.sum + r.totalAvg * r.studentCount,
+          cnt: cur.cnt + r.studentCount,
+        });
+      }
+      return [...exams]
+        .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
+        .map((exam) => {
+          const agg = byExam.get(exam.id);
+          const avg = agg && agg.cnt > 0 ? agg.sum / agg.cnt : 0;
+          return { name: exam.name, 平均分: Math.round(avg * 100) / 100 };
+        });
+    }
     return exams
       .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
       .map((exam) => {
@@ -79,10 +109,28 @@ export default function AnalyticsPage() {
             : 0;
         return { name: exam.name, 平均分: Math.round(avg * 100) / 100 };
       });
-  }, [exams, classStudents, scoreIndex]);
+  }, [exams, classStudents, scoreIndex, gradeSummary, activeClass]);
 
   const classAvgData = useMemo(() => {
     if (!activeExam) return [];
+    if (gradeSummary.length > 0) {
+      const row = gradeSummary.find(
+        (r) => r.examId === activeExam.id && r.classNo === activeClass,
+      );
+      if (row) {
+        const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
+        for (const subject of ALL_SUBJECTS) {
+          const v = row.subjectAvg[subject];
+          if (v == null) continue;
+          result.push({
+            subject,
+            classAverage: Math.round(v * 10) / 10,
+            gradeAverage: Math.round(v * 10) / 10,
+          });
+        }
+        if (result.length > 0) return result;
+      }
+    }
     const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
     for (const subject of ALL_SUBJECTS) {
       const values = classStudents
@@ -90,14 +138,21 @@ export default function AnalyticsPage() {
         .filter((v): v is number => v != null && v > 0);
       if (values.length === 0) continue;
       const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+      const allValues = students
+        .map((s) => examValueMap.get(`${s.idCard}\u0000${subject}`))
+        .filter((v): v is number => v != null && v > 0);
+      const allAvg =
+        allValues.length > 0
+          ? allValues.reduce((sum, v) => sum + v, 0) / allValues.length
+          : avg;
       result.push({
         subject,
         classAverage: Math.round(avg * 10) / 10,
-        gradeAverage: Math.round(avg * 10) / 10,
+        gradeAverage: Math.round(allAvg * 10) / 10,
       });
     }
     return result;
-  }, [classStudents, examValueMap, activeExam]);
+  }, [classStudents, students, examValueMap, activeExam, gradeSummary, activeClass]);
 
   const progressRankings = useMemo(() => {
     if (examIndex < 1) return [];
@@ -141,6 +196,12 @@ export default function AnalyticsPage() {
     const idx = examList.indexOf(name);
     if (idx >= 0) setCurrentExamIndex(idx);
   };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (activeClass === 0) loadAllScores();
+    else loadScoresForClass(activeClass);
+  }, [isAdmin, activeClass, loadAllScores, loadScoresForClass]);
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -341,11 +402,22 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
+              {activeClass === 0 && scoresLoading.includes(0) && (
+                <div className="flex items-center justify-between bg-white rounded-xl border border-gray-100 px-4 py-3 mb-4 text-sm">
+                  <span className="text-gray-600">正在加载全部班级成绩…</span>
+                  <span className="text-gray-400 tabular-nums">
+                    {loadedScoreClasses.length}/{allClassCount} 个班级
+                  </span>
+                </div>
+              )}
               <ScoreRankTable
                 students={classStudents}
                 scores={scores}
                 examId={activeExam?.id}
                 className={`${activeClass}班`}
+                loading={
+                  activeClass !== 0 && scoresLoading.includes(activeClass)
+                }
               />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

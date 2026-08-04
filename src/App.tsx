@@ -7,6 +7,9 @@ import AnalyticsPage from '@/pages/AnalyticsPage';
 import SchedulePage from '@/pages/SchedulePage';
 import SettingsPage from '@/pages/SettingsPage';
 import LoginPage from '@/pages/LoginPage';
+import StudentPortal from '@/pages/StudentPortal';
+import MessagesPage from '@/pages/MessagesPage';
+import ForcePasswordChange from '@/components/ForcePasswordChange';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
 
@@ -14,10 +17,18 @@ export default function App() {
   const { activePage, setActivePage, closeSidebar } = useStore();
   const loadFromSupabase = useStore((s) => s.loadFromSupabase);
   const supabaseError = useStore((s) => s.supabaseError);
+  const restoreAuth = useAuthStore((s) => s.restore);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
-    loadFromSupabase();
-  }, [loadFromSupabase]);
+    restoreAuth();
+  }, [restoreAuth]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadFromSupabase();
+    }
+  }, [loadFromSupabase, isAuthenticated]);
 
   useEffect(() => {
     const pendingRedirect = sessionStorage.getItem('gh-pages-redirect');
@@ -56,7 +67,25 @@ export default function App() {
           path="/"
           element={
             <RequireAuth>
-              <Dashboard />
+              <HomeRedirect />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/my-scores"
+          element={
+            <RequireAuth>
+              <StudentOnly>
+                <StudentPortal />
+              </StudentOnly>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/messages"
+          element={
+            <RequireAuth>
+              <MessagesPage />
             </RequireAuth>
           }
         />
@@ -64,9 +93,11 @@ export default function App() {
           path="/students"
           element={
             <RequireAuth>
-              <PageRouter activePage={activePage} setActivePage={setActivePage}>
-                <StudentsPage />
-              </PageRouter>
+              <StaffOnly>
+                <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                  <StudentsPage />
+                </PageRouter>
+              </StaffOnly>
             </RequireAuth>
           }
         />
@@ -74,9 +105,11 @@ export default function App() {
           path="/analytics"
           element={
             <RequireAuth>
-              <PageRouter activePage={activePage} setActivePage={setActivePage}>
-                <AnalyticsPage />
-              </PageRouter>
+              <StaffOnly>
+                <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                  <AnalyticsPage />
+                </PageRouter>
+              </StaffOnly>
             </RequireAuth>
           }
         />
@@ -94,9 +127,11 @@ export default function App() {
           path="/settings"
           element={
             <RequireAuth>
-              <PageRouter activePage={activePage} setActivePage={setActivePage}>
-                <SettingsPage />
-              </PageRouter>
+              <StaffOnly>
+                <PageRouter activePage={activePage} setActivePage={setActivePage}>
+                  <SettingsPage />
+                </PageRouter>
+              </StaffOnly>
             </RequireAuth>
           }
         />
@@ -104,7 +139,9 @@ export default function App() {
           path="/student/:id"
           element={
             <RequireAuth>
-              <StudentDetail />
+              <StaffOnly>
+                <StudentDetail />
+              </StaffOnly>
             </RequireAuth>
           }
         />
@@ -116,12 +153,56 @@ export default function App() {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const restoring = useAuthStore((s) => s.restoring);
+  const mustChangePassword = useAuthStore((s) => s.session?.mustChangePassword);
   const location = useLocation();
+
+  if (restoring) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f1f5f9]">
+        <div className="text-sm text-gray-400">正在加载…</div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (mustChangePassword) {
+    return <ForcePasswordChange />;
+  }
+
+  return <>{children}</>;
+}
+
+function HomeRedirect() {
+  const role = useAuthStore((s) => s.session?.role);
+  const activePage = useStore((s) => s.activePage);
+  const setActivePage = useStore((s) => s.setActivePage);
+  if (role === 'student') {
+    return <Navigate to="/my-scores" replace />;
+  }
+  return (
+    <PageRouter activePage={activePage} setActivePage={setActivePage}>
+      <Dashboard />
+    </PageRouter>
+  );
+}
+
+function StaffOnly({ children }: { children: React.ReactNode }) {
+  const role = useAuthStore((s) => s.session?.role);
+  if (role === 'student') {
+    return <Navigate to="/my-scores" replace />;
+  }
+  return <>{children}</>;
+}
+
+function StudentOnly({ children }: { children: React.ReactNode }) {
+  const role = useAuthStore((s) => s.session?.role);
+  if (role !== 'student') {
+    return <Navigate to="/" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -131,12 +212,13 @@ function PageRouter({
   children,
 }: {
   activePage: string;
-  setActivePage: (page: any) => void;
+  setActivePage: (page: string) => void;
   children: React.ReactNode;
 }) {
   useEffect(() => {
     const path = window.location.pathname;
     const map: Record<string, string> = {
+      '/': 'dashboard',
       '/students': 'students',
       '/analytics': 'analytics',
       '/schedule': 'schedule',

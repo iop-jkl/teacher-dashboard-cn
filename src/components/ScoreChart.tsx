@@ -20,6 +20,7 @@ export default function ScoreChart({ studentId, classNo }: ScoreChartProps) {
   const students = useStore((s) => s.students);
   const scores = useStore((s) => s.scores);
   const exams = useStore((s) => s.exams);
+  const gradeSummary = useStore((s) => s.gradeSummary);
 
   const sortedExams = useMemo(
     () =>
@@ -38,7 +39,19 @@ export default function ScoreChart({ studentId, classNo }: ScoreChartProps) {
         总分赋分: totalFor(scores, studentId, exam.id),
       }));
     }
-    if (classNo) {
+    if (classNo != null && classNo > 0) {
+      if (gradeSummary.length > 0) {
+        const rows = gradeSummary.filter(
+          (r) => r.classNo === classNo && r.totalAvg != null,
+        );
+        if (rows.length > 0) {
+          const byExam = new Map(rows.map((r) => [r.examId, r.totalAvg]));
+          return sortedExams.map((exam) => ({
+            exam: exam.name,
+            总分赋分: byExam.get(exam.id) ?? 0,
+          }));
+        }
+      }
       const classIds = new Set(
         students.filter((s) => s.classNo === classNo).map((s) => s.idCard),
       );
@@ -53,8 +66,24 @@ export default function ScoreChart({ studentId, classNo }: ScoreChartProps) {
         return { exam: exam.name, 总分赋分: Math.round(avg * 100) / 100 };
       });
     }
+    if (classNo === 0 && gradeSummary.length > 0) {
+      const byExam = new Map<string, { sum: number; cnt: number }>();
+      for (const r of gradeSummary) {
+        if (r.totalAvg == null) continue;
+        const cur = byExam.get(r.examId) ?? { sum: 0, cnt: 0 };
+        byExam.set(r.examId, {
+          sum: cur.sum + r.totalAvg * r.studentCount,
+          cnt: cur.cnt + r.studentCount,
+        });
+      }
+      return sortedExams.map((exam) => {
+        const agg = byExam.get(exam.id);
+        const avg = agg && agg.cnt > 0 ? agg.sum / agg.cnt : 0;
+        return { exam: exam.name, 总分赋分: Math.round(avg * 100) / 100 };
+      });
+    }
     return [];
-  }, [isPersonal, studentId, classNo, sortedExams, scores, students]);
+  }, [isPersonal, studentId, classNo, sortedExams, scores, students, gradeSummary]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5">

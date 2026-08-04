@@ -81,6 +81,7 @@ export async function parseExamFile(file: File): Promise<ParsedExamImport> {
       idCard,
       name,
       classNo,
+      grade: '高一',
       selectedSubjects: selected,
       fatherName: '',
       fatherPhone: '',

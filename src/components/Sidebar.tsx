@@ -5,6 +5,8 @@ import {
   FileText,
   Calendar,
   Settings,
+  BarChart3,
+  Mail,
   X,
   LogOut,
 } from 'lucide-react';
@@ -16,7 +18,7 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const navItems: {
+const staffNavItems: {
   icon: typeof LayoutDashboard;
   label: string;
   key: PageKey;
@@ -29,33 +31,75 @@ const navItems: {
   { icon: Settings, label: '设置', key: 'settings', path: '/settings' },
 ];
 
+const staffMailItem: { key: PageKey; label: string; path: string } = {
+  key: 'settings',
+  label: '匿名信箱',
+  path: '/messages',
+};
+
+const studentItems: { key: PageKey; label: string; path: string }[] = [
+  { key: 'students', label: '我的成绩', path: '/my-scores' },
+  { key: 'schedule', label: '学校日程', path: '/schedule' },
+  { key: 'settings', label: '匿名信', path: '/messages' },
+];
+
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const activePage = useStore((s) => s.activePage);
   const setActivePage = useStore((s) => s.setActivePage);
   const closeSidebar = useStore((s) => s.closeSidebar);
+  const unreadMessages = useStore((s) => s.unreadMessages);
+  const refreshUnreadMessages = useStore((s) => s.refreshUnreadMessages);
   const session = useAuthStore((s) => s.session);
   const logout = useAuthStore((s) => s.logout);
 
-  const handleNavigate = (item: (typeof navItems)[number]) => {
+  const handleNavigate = (item: { key: PageKey; path: string }) => {
     setActivePage(item.key);
     navigate(item.path);
     closeSidebar();
+    if (item.path === '/messages' && session?.role === 'teacher') {
+      refreshUnreadMessages();
+    }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     closeSidebar();
     navigate('/login');
   };
 
   const currentPath = location.pathname;
   const teacherName = session?.teacherName || '用户';
-  const subtitle =
-    session?.role === 'admin'
+  const isStudent = session?.role === 'student';
+  const subtitle = isStudent
+    ? `${session?.classNo ?? ''}班 · 学生`
+    : session?.role === 'admin'
       ? '管理员 · 全部班级'
       : `${session?.classNo ?? ''}班 · 班主任`;
+  const items = isStudent
+    ? studentItems
+    : session?.role === 'teacher'
+      ? [
+          ...staffNavItems
+            .filter((i) => i.key !== 'settings')
+            .map((i): { key: PageKey; label: string; path: string } => ({
+              key: i.key,
+              label: i.label,
+              path: i.path,
+            })),
+          staffMailItem,
+          { key: 'settings' as PageKey, label: '设置', path: '/settings' },
+        ]
+      : staffNavItems.map((i) => ({ key: i.key, label: i.label, path: i.path }));
+
+  const itemIcons: Record<string, typeof LayoutDashboard> = {
+    students: isStudent ? BarChart3 : Users,
+    schedule: Calendar,
+    settings: isStudent ? Mail : Settings,
+    dashboard: LayoutDashboard,
+    analytics: FileText,
+  };
 
   return (
     <>
@@ -77,8 +121,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="h-16 px-5 flex items-center justify-between border-b border-gray-100">
           <button
             onClick={() => {
-              setActivePage('dashboard');
-              navigate('/');
+              setActivePage('students');
+              navigate(isStudent ? '/my-scores' : '/');
             }}
             className="flex items-center gap-2"
           >
@@ -96,7 +140,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         <nav className="px-3 py-4 space-y-1">
-          {navItems.map((item) => {
+          {items.map((item) => {
+            const Icon = itemIcons[item.key] ?? LayoutDashboard;
             const isActive =
               item.key === activePage ||
               (item.path === '/' && (currentPath === '/' || currentPath === '')) ||
@@ -114,9 +159,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   }
                 `}
               >
-                <item.icon className="w-5 h-5" />
+                <Icon className="w-5 h-5" />
                 <span>{item.label}</span>
-                {item.key === activePage && (
+                {item.path === '/messages' && !isStudent && unreadMessages > 0 && (
+                  <span className="ml-auto flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-medium">
+                    {unreadMessages}
+                  </span>
+                )}
+                {isActive && (
                   <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#2dd4bf]" />
                 )}
               </button>

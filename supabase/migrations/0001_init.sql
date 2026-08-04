@@ -26,8 +26,6 @@ create table if not exists public.scores (
   subject text,
   score numeric default 0,
   class_rank integer default 0,
-  school_rank integer default 0,
-  subject_rank integer default 0,
   total_students integer default 0,
   created_at timestamptz default now()
 );

@@ -12,12 +12,14 @@ export interface Exam {
   id: string;
   name: string;
   date: string;
+  scopeClassNo: number;
 }
 
 export interface Student {
   idCard: string;
   name: string;
   classNo: number;
+  grade: string;
   selectedSubjects: string[];
   fatherName: string;
   fatherPhone: string;
@@ -26,6 +28,12 @@ export interface Student {
   motherPhone: string;
   motherWechat: string;
   remark: string;
+  teacherComment?: string;
+}
+
+export interface StudentGoal {
+  studentId: string;
+  totalGoal: number | null;
 }
 
 export interface Score {
@@ -41,7 +49,6 @@ export interface Score {
 export interface ClassTeacher {
   classNo: number;
   teacherName: string;
-  password: string;
 }
 
 export interface Announcement {
@@ -64,4 +71,12 @@ export interface SubjectScore {
   assignedScore: number | null;
   classRank: number;
   schoolRank: number;
+}
+
+export interface GradeSummaryRow {
+  examId: string;
+  classNo: number;
+  totalAvg: number | null;
+  subjectAvg: Record<string, number | null>;
+  studentCount: number;
 }

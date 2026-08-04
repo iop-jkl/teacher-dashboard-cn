@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Pencil, X } from 'lucide-react';
+import { Pencil, X, ArrowUp, ArrowDown } from 'lucide-react';
 import type { Student, Score } from '@/types';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuth';
@@ -14,12 +14,16 @@ import {
 } from '@/lib/scoreUtils';
 import { ALL_SUBJECTS } from '@/data/mockData';
 import { cn } from '@/lib/utils';
+import Pagination from '@/components/Pagination';
+
+const PAGE_SIZE = 100;
 
 interface StudentTableProps {
   students: Student[];
   scores?: Score[];
   examId?: string;
   className?: string;
+  loading?: boolean;
 }
 
 export default function StudentTable({
@@ -27,6 +31,7 @@ export default function StudentTable({
   scores = [],
   examId,
   className = '本班',
+  loading = false,
 }: StudentTableProps) {
   const exams = useStore((s) => s.exams);
   const updateExamScores = useStore((s) => s.updateExamScores);
@@ -34,6 +39,8 @@ export default function StudentTable({
   const showToast = useToastStore((s) => s.showToast);
   const canEdit = session?.role === 'admin';
   const [sortKey, setSortKey] = useState('总分');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [page, setPage] = useState(0);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [drafts, setDrafts] = useState<
     Record<string, { rawScore: string; assignedScore: string }>
@@ -41,6 +48,10 @@ export default function StudentTable({
 
   const activeExamId = examId || exams[exams.length - 1]?.id || '';
   const index = useMemo(() => buildScoreIndex(scores), [scores]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [activeExamId, students]);
 
   const rows = useMemo(() => {
     return students
@@ -56,7 +67,7 @@ export default function StudentTable({
           : 0;
         const totals = studentSubjectTotals(index, student.idCard, activeExamId);
         const subjectTotals: Record<string, number | null> = {};
-        for (const subject of ['语文', '数学', '英语', ...student.selectedSubjects]) {
+        for (const subject of ALL_SUBJECTS) {
           subjectTotals[subject] = totals.get(subject) ?? null;
         }
         const value =
@@ -70,8 +81,20 @@ export default function StudentTable({
           value,
         };
       })
-      .sort((a, b) => b.value - a.value);
-  }, [students, index, activeExamId, sortKey]);
+      .sort((a, b) =>
+        sortOrder === 'desc' ? b.value - a.value : a.value - b.value,
+      );
+  }, [students, index, activeExamId, sortKey, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageRows = rows.slice(
+    currentPage * PAGE_SIZE,
+    currentPage * PAGE_SIZE + PAGE_SIZE,
+  );
+
+  const toggleSortOrder = () =>
+    setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'));
 
   const openEdit = (student: Student) => {
     const list = ['语文', '数学', '英语', ...student.selectedSubjects];
@@ -117,23 +140,44 @@ export default function StudentTable({
             {activeExamId ? ` · ${exams.find((e) => e.id === activeExamId)?.name || ''}` : ''}
           </p>
         </div>
-        <select
-          value={sortKey}
-          onChange={(e) => setSortKey(e.target.value)}
-          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none focus:border-[#2dd4bf]/40"
-          aria-label="选择排序方式"
-        >
-          <option value="总分">按总分赋分</option>
-          {ALL_SUBJECTS.map((s) => (
-            <option key={s} value={s}>
-              按{s}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value)}
+            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none focus:border-[#2dd4bf]/40"
+            aria-label="选择排序方式"
+          >
+            <option value="总分">按总分赋分</option>
+            {ALL_SUBJECTS.map((s) => (
+              <option key={s} value={s}>
+                按{s}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={toggleSortOrder}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+            aria-label="切换排序方向"
+            title={sortOrder === 'desc' ? '当前降序，点击切换为升序' : '当前升序，点击切换为降序'}
+          >
+            {sortOrder === 'desc' ? (
+              <ArrowDown className="w-3.5 h-3.5" />
+            ) : (
+              <ArrowUp className="w-3.5 h-3.5" />
+            )}
+            {sortOrder === 'desc' ? '降序' : '升序'}
+          </button>
+        </div>
       </div>
 
-      <div className="hidden lg:block overflow-x-auto">
-        <table className="w-full">
+      {loading ? (
+        <div className="py-16 text-center text-sm text-gray-500">
+          正在加载成绩数据…
+        </div>
+      ) : (
+        <>
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full min-w-[1600px]">
           <thead>
             <tr className="bg-gray-50 text-xs text-gray-500">
               <th className="px-4 py-3 text-left font-medium w-14">排名</th>
@@ -143,6 +187,11 @@ export default function StudentTable({
               <th className="px-4 py-3 text-right font-medium">总分赋分</th>
               <th className="px-4 py-3 text-right font-medium">班名次</th>
               <th className="px-4 py-3 text-right font-medium">校名次</th>
+              {ALL_SUBJECTS.map((subject) => (
+                <th key={subject} className="px-3 py-3 text-right font-medium">
+                  {subject}
+                </th>
+              ))}
               <th className="px-4 py-3 text-left font-medium">选科</th>
               {canEdit && (
                 <th className="px-4 py-3 text-center font-medium w-16">编辑</th>
@@ -150,7 +199,7 @@ export default function StudentTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
+            {pageRows.map((row, idx) => (
               <tr
                 key={row.student.idCard}
                 onDoubleClick={canEdit ? () => openEdit(row.student) : undefined}
@@ -191,6 +240,18 @@ export default function StudentTable({
                 <td className="px-4 py-3 text-right text-sm text-gray-600">
                   {row.schoolRank || '-'}
                 </td>
+                {ALL_SUBJECTS.map((subject) => {
+                  const v = row.subjectTotals[subject];
+                  const isAssigned = row.student.selectedSubjects.includes(subject);
+                  return (
+                    <td key={subject} className="px-3 py-3 text-right">
+                      <p className="text-sm font-medium text-gray-700">
+                        {v != null ? v.toFixed(isAssigned ? 2 : 1) : '-'}
+                        {isAssigned && v != null ? '分' : ''}
+                      </p>
+                    </td>
+                  );
+                })}
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
                     {row.student.selectedSubjects.map((s) => (
@@ -218,10 +279,16 @@ export default function StudentTable({
             ))}
           </tbody>
         </table>
+        <Pagination
+          page={currentPage}
+          total={rows.length}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
       </div>
 
       <div className="lg:hidden divide-y divide-gray-50">
-        {rows.map((row, idx) => (
+        {pageRows.map((row, idx) => (
           <div key={row.student.idCard} className="px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-50 text-gray-500 shrink-0">
@@ -247,7 +314,15 @@ export default function StudentTable({
             </div>
           </div>
         ))}
-      </div>
+        <Pagination
+          page={page}
+          total={rows.length}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
+        </div>
+        </>
+      )}
 
       {editingStudent && (
         <div

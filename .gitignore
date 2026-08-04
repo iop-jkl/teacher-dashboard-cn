@@ -33,6 +33,13 @@ dev-dist
 
 # Cloudflare Pages direct upload artifacts
 .cf-deploy/
+.wrangler/
 
 # Exam import artifacts
 .import-data/
+
+# Reason desktop metadata
+.reasonix/
+
+# �����嵥����ֹ�� git��
+scripts/staff-password-*.txt

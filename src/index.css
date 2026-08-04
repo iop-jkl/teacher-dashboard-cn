@@ -58,3 +58,17 @@ input, textarea {
     overflow-x: hidden;
   }
 }
+
+@media print {
+  aside,
+  header,
+  .toast-container {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+  }
+  .print-bg-white {
+    background: #fff !important;
+  }
+}

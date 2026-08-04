@@ -221,7 +221,7 @@ export function recomputeClassRanks(
   }
   const next = scores.map((s) => ({ ...s }));
   for (const subject of subjects) {
-    for (const [classNo, classStudents] of byClass) {
+    for (const [, classStudents] of byClass) {
       const rows = next.filter(
         (s) =>
           s.examId === examId &&

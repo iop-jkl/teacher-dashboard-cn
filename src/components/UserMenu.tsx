@@ -31,11 +31,13 @@ export default function UserMenu() {
   const subtitle =
     session?.role === 'admin'
       ? '管理员 · 全部班级'
-      : `${session?.classNo ?? ''}班 · 班主任`;
+      : session?.role === 'student'
+        ? `${session?.classNo ?? ''}班 · 学生`
+        : `${session?.classNo ?? ''}班 · 班主任`;
   const initial = Array.from(teacherName.trim())[0] || '师';
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     setOpen(false);
     navigate('/login');
   };
@@ -61,16 +63,18 @@ export default function UserMenu() {
             <p className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</p>
           </div>
           <div className="p-1.5">
-            <button
-              onClick={() => {
-                setOpen(false);
-                navigate('/settings');
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <User className="w-4 h-4 text-gray-400" />
-              账号与设置
-            </button>
+            {session?.role !== 'student' && (
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  navigate('/settings');
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <User className="w-4 h-4 text-gray-400" />
+                账号与设置
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors"

@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import { ALL_SUBJECTS } from '@/data/mockData';
 import {
   buildScoreIndex,
@@ -7,12 +8,16 @@ import {
   scoreValue,
 } from '@/lib/scoreUtils';
 import type { Score, Student } from '@/types';
+import Pagination from '@/components/Pagination';
+
+const PAGE_SIZE = 100;
 
 interface Props {
   students: Student[];
   scores: Score[];
   examId: string;
   className?: string;
+  loading?: boolean;
 }
 
 export default function ScoreRankTable({
@@ -20,9 +25,16 @@ export default function ScoreRankTable({
   scores,
   examId,
   className = '本班',
+  loading = false,
 }: Props) {
   const [sortKey, setSortKey] = useState('总分');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [page, setPage] = useState(0);
   const index = useMemo(() => buildScoreIndex(scores), [scores]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [examId, students]);
 
   const rows = useMemo(() => {
     if (!examId) return [];
@@ -60,8 +72,20 @@ export default function ScoreRankTable({
           value,
         };
       })
-      .sort((a, b) => b.value - a.value);
-  }, [students, index, examId, sortKey]);
+      .sort((a, b) =>
+        sortOrder === 'desc' ? b.value - a.value : a.value - b.value,
+      );
+  }, [students, index, examId, sortKey, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageRows = rows.slice(
+    currentPage * PAGE_SIZE,
+    currentPage * PAGE_SIZE + PAGE_SIZE,
+  );
+
+  const toggleSortOrder = () =>
+    setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'));
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -85,6 +109,19 @@ export default function ScoreRankTable({
             </option>
           ))}
         </select>
+        <button
+          onClick={toggleSortOrder}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+          aria-label="切换排序方向"
+          title={sortOrder === 'desc' ? '当前降序，点击切换为升序' : '当前升序，点击切换为降序'}
+        >
+          {sortOrder === 'desc' ? (
+            <ArrowDown className="w-3.5 h-3.5" />
+          ) : (
+            <ArrowUp className="w-3.5 h-3.5" />
+          )}
+          {sortOrder === 'desc' ? '降序' : '升序'}
+        </button>
       </div>
 
       <div className="overflow-x-auto">
@@ -105,7 +142,7 @@ export default function ScoreRankTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
+            {pageRows.map((row, idx) => (
               <tr
                 key={row.student.idCard}
                 className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors"
@@ -156,9 +193,21 @@ export default function ScoreRankTable({
             ))}
           </tbody>
         </table>
+        <Pagination
+          page={currentPage}
+          total={rows.length}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
       </div>
 
-      {rows.length === 0 && (
+      {loading && (
+        <div className="py-12 text-center text-sm text-gray-500">
+          正在加载成绩数据…
+        </div>
+      )}
+
+      {!loading && rows.length === 0 && (
         <div className="py-12 text-center text-sm text-gray-400">暂无成绩数据</div>
       )}
     </div>

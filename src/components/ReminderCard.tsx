@@ -1,5 +1,7 @@
 import { ClipboardCheck, CalendarDays, Check, ClipboardList } from 'lucide-react';
 import type { Reminder } from '@/types';
+import { useAuthStore } from '@/store/useAuth';
+import { canModifyRow } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 
 const typeConfig = {
@@ -42,6 +44,8 @@ function formatDate(dateStr: string) {
 export default function ReminderCard({ reminder, onToggle }: ReminderCardProps) {
   const config = typeConfig[reminder.type];
   const Icon = config.icon;
+  const session = useAuthStore((s) => s.session);
+  const canModify = canModifyRow(reminder.owner, session);
 
   return (
     <div
@@ -89,12 +93,15 @@ export default function ReminderCard({ reminder, onToggle }: ReminderCardProps) 
               {formatDate(reminder.dueDate)}
             </span>
             <button
-              onClick={() => onToggle(reminder.id)}
+              onClick={() => canModify && onToggle(reminder.id)}
+              disabled={!canModify}
+              title={canModify ? '标记完成' : '管理员发布的提醒，不可修改'}
               className={cn(
                 'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all',
                 reminder.completed
                   ? 'bg-[#2dd4bf] border-[#2dd4bf] text-white'
-                  : 'border-gray-300 hover:border-[#2dd4bf]'
+                  : 'border-gray-300 hover:border-[#2dd4bf]',
+                !canModify && 'opacity-30 cursor-not-allowed hover:border-gray-300',
               )}
             >
               {reminder.completed && <Check className="w-3 h-3" />}

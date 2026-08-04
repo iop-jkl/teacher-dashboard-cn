@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, Search, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell, Search, Menu, ChevronLeft, ChevronRight, Mail } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '@/components/Sidebar';
 import UserMenu from '@/components/UserMenu';
 import ReminderCard from '@/components/ReminderCard';
@@ -23,6 +24,7 @@ import {
 } from '@/lib/scoreUtils';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const {
     reminders,
     toggleReminder,
@@ -37,15 +39,33 @@ export default function Dashboard() {
     currentExamIndex,
     setCurrentExamIndex,
     setActiveClass,
+    unreadMessages,
+    gradeSummary,
+    scoresLoading,
+    loadedScoreClasses,
+    dataLoaded,
+    loadAllScores,
   } = useStore();
   const session = useAuthStore((s) => s.session);
   const isAdmin = session?.role === 'admin';
+  const allClassCount = useMemo(
+    () => new Set(students.map((s) => s.classNo)).size,
+    [students],
+  );
 
   useEffect(() => {
     if (!isAdmin && session?.classNo) {
       setActiveClass(session.classNo);
     }
   }, [isAdmin, session?.classNo, setActiveClass]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (!dataLoaded) return;
+    if (activeClass === 0) {
+      loadAllScores();
+    }
+  }, [isAdmin, activeClass, dataLoaded, loadAllScores]);
 
   const showToast = useToastStore((s) => s.showToast);
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,7 +85,9 @@ export default function Dashboard() {
     () =>
       activeClass === 0
         ? students
-        : students.filter((s) => s.classNo === activeClass),
+        : activeClass === -1
+          ? students.filter((s) => s.classNo === 0)
+          : students.filter((s) => s.classNo === activeClass),
     [students, activeClass],
   );
 
@@ -82,7 +104,47 @@ export default function Dashboard() {
     [scores, latestExam],
   );
 
+  const gradeAveragesForExam = useMemo(() => {
+    if (!latestExam || gradeSummary.length === 0) return null;
+    const rows = gradeSummary.filter((r) => r.examId === latestExam.id);
+    if (rows.length === 0) return null;
+    const gradeRow = rows.find((r) => r.classNo === activeClass);
+    const useRows = activeClass === 0 ? rows : gradeRow ? [gradeRow] : rows;
+    return {
+      class: gradeRow ?? null,
+      all: useRows,
+    };
+  }, [latestExam, gradeSummary, activeClass]);
+
   const examAverageData = useMemo(() => {
+    if (gradeAveragesForExam) {
+      const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
+      for (const subject of ALL_SUBJECTS) {
+        const classAvg = gradeAveragesForExam.class?.subjectAvg[subject];
+        if (classAvg == null) continue;
+        let allAvg: number | null = null;
+        if (activeClass === 0) {
+          let sum = 0;
+          let cnt = 0;
+          for (const r of gradeAveragesForExam.all) {
+            const v = r.subjectAvg[subject];
+            if (v != null) {
+              sum += v * r.studentCount;
+              cnt += r.studentCount;
+            }
+          }
+          allAvg = cnt > 0 ? sum / cnt : null;
+        } else {
+          allAvg = classAvg;
+        }
+        result.push({
+          subject,
+          classAverage: Math.round(classAvg * 10) / 10,
+          gradeAverage: allAvg != null ? Math.round(allAvg * 10) / 10 : Math.round(classAvg * 10) / 10,
+        });
+      }
+      if (result.length > 0) return result;
+    }
     if (!latestExam) return [];
     const result: { subject: string; classAverage: number; gradeAverage: number }[] = [];
     for (const subject of ALL_SUBJECTS) {
@@ -105,7 +167,7 @@ export default function Dashboard() {
       });
     }
     return result;
-  }, [classStudents, students, examValueMap, latestExam]);
+  }, [classStudents, students, examValueMap, latestExam, gradeAveragesForExam, activeClass]);
 
   const progressRankings = useMemo(() => {
     if (!latestExam || !prevExam) return [];
@@ -173,7 +235,11 @@ export default function Dashboard() {
                   })}
                   {' · '}
                   <span className="text-[#2dd4bf]">
-                    {activeClass === 0 ? '全部班级' : `${activeClass}班`}
+                    {activeClass === 0
+                      ? '全部班级'
+                      : activeClass === -1
+                        ? '待分班'
+                        : `${activeClass}班`}
                   </span>
                 </p>
               </div>
@@ -192,6 +258,9 @@ export default function Dashboard() {
                       {cls === 0 ? '全部班级' : `${cls}班`}
                     </option>
                   ))}
+                  {students.some((s) => s.classNo === 0) && (
+                    <option value={-1}>待分班</option>
+                  )}
                 </select>
               )}
               <div className="relative hidden md:block">
@@ -304,6 +373,29 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1 space-y-6">
+              {session?.role === 'teacher' && (
+                <div
+                  onClick={() => navigate('/messages')}
+                  className="bg-white rounded-xl border border-gray-100 p-5 cursor-pointer hover:border-[#2dd4bf]/40 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-5 h-5 text-purple-500" />
+                      <h3 className="text-base font-semibold text-gray-900">匿名信箱</h3>
+                    </div>
+                    {unreadMessages > 0 && (
+                      <span className="flex items-center justify-center min-w-6 h-6 px-2 rounded-full bg-red-500 text-white text-xs font-medium">
+                        {unreadMessages} 未读
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    {unreadMessages > 0
+                      ? `你有 ${unreadMessages} 封新匿名信待查看`
+                      : '暂无未读匿名信'}
+                  </p>
+                </div>
+              )}
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold text-gray-900">近期提醒</h3>
@@ -371,12 +463,44 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-gray-900">学生成绩排行</h3>
             <ExcelExportButton />
           </div>
-          <StudentTable
-            students={classStudents}
-            scores={scores}
-            examId={latestExam?.id}
-            className={`${activeClass}班`}
-          />
+          {scoresLoading.includes(activeClass) && activeClass !== 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 p-10 text-center">
+              <p className="text-sm text-gray-500">正在加载该班级成绩…</p>
+            </div>
+          ) : (
+            <>
+              {activeClass === 0 && scoresLoading.includes(0) && (
+                <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">正在加载全部班级成绩…</span>
+                    <span className="text-gray-400 tabular-nums">
+                      {loadedScoreClasses.length}/{allClassCount} 个班级
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-full bg-[#2dd4bf] rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round(
+                            (loadedScoreClasses.length / Math.max(allClassCount, 1)) * 100,
+                          ),
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              <StudentTable
+                students={classStudents}
+                scores={scores}
+                examId={latestExam?.id}
+                className={activeClass === -1 ? '待分班' : `${activeClass}班`}
+                loading={false}
+              />
+            </>
+          )}
         </div>
       </main>
 

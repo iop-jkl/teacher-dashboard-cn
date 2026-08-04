@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Reminder, Exam, Student, Score, ClassTeacher } from '@/types';
+import type { Reminder, Exam, Student, Score, ClassTeacher, StudentGoal, GradeSummaryRow } from '@/types';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/useAuth';
 import { recomputeClassRanks, recomputeTotalRows } from '@/lib/scoreUtils';
@@ -22,14 +22,7 @@ export interface ScheduleEvent {
   owner?: string;
 }
 
-const initialScheduleEvents: ScheduleEvent[] = [
-  { id: '1', title: '期末考试', date: '2026-08-05', time: '08:00', location: '教学楼', type: 'exam' },
-  { id: '2', title: '期末考试', date: '2026-08-06', time: '08:00', location: '教学楼', type: 'exam' },
-  { id: '3', title: '期末考试', date: '2026-08-07', time: '08:00', location: '教学楼', type: 'exam' },
-  { id: '4', title: '家长会', date: '2026-07-31', time: '14:00', location: '学校礼堂', type: 'meeting' },
-  { id: '5', title: '收实践报告', date: '2026-08-01', time: '17:00', location: '办公室', type: 'deadline' },
-  { id: '6', title: '备课组会议', date: '2026-07-30', time: '10:00', location: '教研组', type: 'meeting' },
-];
+const initialScheduleEvents: ScheduleEvent[] = [];
 
 type AnyRow = Record<string, unknown>;
 
@@ -38,6 +31,7 @@ function studentToRow(s: Student): AnyRow {
     id_card: s.idCard,
     name: s.name,
     class_no: s.classNo,
+    grade: s.grade,
     selected_subjects: s.selectedSubjects,
     father_name: s.fatherName,
     father_phone: s.fatherPhone,
@@ -46,6 +40,7 @@ function studentToRow(s: Student): AnyRow {
     mother_phone: s.motherPhone,
     mother_wechat: s.motherWechat,
     remark: s.remark,
+    teacher_comment: s.teacherComment ?? null,
   };
 }
 
@@ -55,6 +50,7 @@ function rowToStudent(r: AnyRow): Student {
     idCard: String(r.id_card ?? ''),
     name: String(r.name ?? ''),
     classNo: Number(r.class_no ?? 0),
+    grade: String(r.grade ?? '高一'),
     selectedSubjects: Array.isArray(raw)
       ? raw.map((x) => String(x))
       : [],
@@ -65,11 +61,17 @@ function rowToStudent(r: AnyRow): Student {
     motherPhone: String(r.mother_phone ?? ''),
     motherWechat: String(r.mother_wechat ?? ''),
     remark: String(r.remark ?? ''),
+    teacherComment: r.teacher_comment != null ? String(r.teacher_comment) : undefined,
   };
 }
 
 function examToRow(e: Exam): AnyRow {
-  return { id: e.id, name: e.name, date: e.date || null };
+  return {
+    id: e.id,
+    name: e.name,
+    date: e.date || null,
+    scope_class_no: e.scopeClassNo ?? 0,
+  };
 }
 
 function rowToExam(r: AnyRow): Exam {
@@ -77,6 +79,7 @@ function rowToExam(r: AnyRow): Exam {
     id: String(r.id ?? ''),
     name: String(r.name ?? ''),
     date: r.date ? String(r.date).slice(0, 10) : '',
+    scopeClassNo: Number(r.scope_class_no ?? 0),
   };
 }
 
@@ -108,7 +111,29 @@ function rowToTeacher(r: AnyRow): ClassTeacher {
   return {
     classNo: Number(r.class_no ?? 0),
     teacherName: String(r.teacher_name ?? ''),
-    password: String(r.password ?? ''),
+  };
+}
+
+function rowToGoal(r: AnyRow): StudentGoal {
+  return {
+    studentId: String(r.student_id ?? ''),
+    totalGoal: r.total_goal == null ? null : Number(r.total_goal),
+  };
+}
+
+function rowToGradeSummary(r: AnyRow): GradeSummaryRow {
+  const subjectAvg: Record<string, number | null> = {};
+  if (r.subject_avg && typeof r.subject_avg === 'object') {
+    for (const [k, v] of Object.entries(r.subject_avg as Record<string, unknown>)) {
+      subjectAvg[k] = v == null ? null : Number(v);
+    }
+  }
+  return {
+    examId: String(r.exam_id ?? ''),
+    classNo: Number(r.class_no ?? 0),
+    totalAvg: r.total_avg == null ? null : Number(r.total_avg),
+    subjectAvg,
+    studentCount: Number(r.student_count ?? 0),
   };
 }
 
@@ -160,15 +185,35 @@ function rowToReminder(r: AnyRow): Reminder {
   };
 }
 
+// 单向可见：管理员创建的（owner='admin' 或空）所有角色可见；
+// 班主任创建的（owner=班号）仅本人可见，管理员不可见
 function visibleRows<T extends { owner?: string }>(
   rows: T[],
   session: { role: string; classNo: number } | null,
 ): T[] {
-  if (!session || session.role === 'admin') return rows;
+  if (!session) return rows.filter((r) => !r.owner || r.owner === 'admin');
+  if (session.role === 'admin') {
+    return rows.filter((r) => !r.owner || r.owner === 'admin');
+  }
+  if (session.role === 'student') {
+    return rows.filter((r) => !r.owner || r.owner === 'admin');
+  }
   const mine = String(session.classNo);
   return rows.filter(
     (r) => !r.owner || r.owner === 'admin' || r.owner === mine,
   );
+}
+
+// 可修改判断：admin 数据（owner 为空视为 admin 创建）仅管理员可改；
+// 班主任只能改自己创建的
+export function canModifyRow(
+  owner: string | undefined,
+  session: { role: string; classNo: number } | null,
+): boolean {
+  if (!session || session.role === 'student') return false;
+  if (session.role === 'admin') return true;
+  if (!owner || owner === 'admin') return false;
+  return owner === String(session.classNo);
 }
 
 async function upsertStudents(rows: Student[]) {
@@ -259,7 +304,6 @@ async function upsertClassTeacher(t: ClassTeacher) {
     .upsert({
       class_no: t.classNo,
       teacher_name: t.teacherName,
-      password: t.password,
     });
   if (error) console.error('[supabase] upsert class_teacher failed:', error.message);
 }
@@ -270,40 +314,170 @@ function sortExamList(exams: Exam[]): string[] {
     .map((e) => e.name);
 }
 
+function mergeScores(existing: Score[], incoming: Score[]): Score[] {
+  if (incoming.length === 0) return existing;
+  const key = (s: Score) => `${s.studentId}\u0000${s.examId}\u0000${s.subject}`;
+  const map = new Map<string, Score>();
+  for (const s of existing) map.set(key(s), s);
+  for (const s of incoming) map.set(key(s), s);
+  return [...map.values()];
+}
+
+// 网络层无超时会导致请求无限挂起，这里统一加超时保护
+function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms);
+    Promise.resolve(p).then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 async function fetchAllRows(
   table: string,
   orderBy: { column: string; ascending: boolean }[],
+  filter?: { column: string; value: unknown | unknown[] },
 ): Promise<AnyRow[]> {
   if (!supabase) return [];
   const pageSize = 1000;
-  let countQuery = supabase.from(table).select('*', {
-    count: 'exact',
-    head: true,
-  });
-  for (const o of orderBy) {
-    countQuery = countQuery.order(o.column, { ascending: o.ascending });
-  }
-  const { count } = await countQuery.range(0, 0);
-  const total = count ?? 0;
-  const pageCount = Math.ceil(total / pageSize);
-  const pages = await Promise.all(
-    Array.from({ length: pageCount }, (_, i) => {
-      let query = supabase.from(table).select('*');
-      for (const o of orderBy) {
-        query = query.order(o.column, { ascending: o.ascending });
-      }
-      return query.range(i * pageSize, i * pageSize + pageSize - 1);
-    }),
-  );
+  type QueryFilter = ReturnType<ReturnType<NonNullable<typeof supabase>['from']>['select']>;
+  const applyFilter = (values?: { column: string; value: unknown | unknown[] }) => (
+    q: QueryFilter,
+  ): QueryFilter => {
+    if (!values) return q;
+    return Array.isArray(values.value)
+      ? q.in(values.column, values.value)
+      : q.eq(values.column, values.value);
+  };
+
   const rows: AnyRow[] = [];
-  for (const page of pages) {
-    if (page.error) throw page.error;
-    rows.push(...((page.data ?? []) as AnyRow[]));
+  // 分页拉取直到出现不满一页的结果（免去额外的 count 往返请求）；
+  // in() 列表场景可按条目数上限估算页数，避免并发 worker 抢跑发出大量空页请求
+  const maxPages =
+    filter && Array.isArray(filter.value) && filter.value.length > 0
+      ? Math.ceil((filter.value.length * 32) / pageSize) + 1
+      : 1000;
+  // 限流并发 12，单页失败重试 3 次（退避）；仍有失败则整体抛错，由上层重试
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let cursor = 0;
+  let done = false;
+  let failedPages = 0;
+  const workers = Array.from({ length: 12 }, async () => {
+    while (!done) {
+      const idx = cursor++;
+      if (idx >= maxPages) break;
+      let got: AnyRow[] | null = null;
+      for (let attempt = 0; attempt < 3 && !got; attempt++) {
+        try {
+          let query = applyFilter(filter)(supabase.from(table).select('*'));
+          for (const o of orderBy) {
+            query = query.order(o.column, { ascending: o.ascending });
+          }
+          const page = await withTimeout(
+            query.range(idx * pageSize, idx * pageSize + pageSize - 1),
+            20000,
+            `fetch ${table} page ${idx}`,
+          );
+          if (!page.error) {
+            got = (page.data ?? []) as AnyRow[];
+          } else {
+            // 偶发 401/403：先刷新会话再重试
+            const status = (page as { status?: number }).status;
+            if (status === 401 || status === 403) {
+              try {
+                await supabase.auth.refreshSession();
+              } catch {
+                /* ignore */
+              }
+            }
+            await sleep(800 * (attempt + 1));
+          }
+        } catch (e) {
+          console.error(`[supabase] ${table} page ${idx} error:`, (e as Error)?.message);
+          await sleep(800 * (attempt + 1));
+        }
+      }
+      if (!got) {
+        failedPages++;
+        done = true;
+        continue;
+      }
+      rows.push(...got);
+      if (got.length < pageSize) done = true;
+    }
+  });
+  await Promise.all(workers);
+  if (failedPages > 0) {
+    throw new Error(`fetch ${table} failed: ${failedPages} page(s) error`);
   }
   return rows;
 }
 
 let loadPromise: Promise<void> | null = null;
+
+async function fetchUnreadCount(
+  session: { role: string; classNo: number } | null,
+): Promise<number> {
+  if (!supabase) return 0;
+  const { role, classNo } = session ?? { role: '', classNo: 0 };
+  if (role !== 'teacher' || !classNo) return 0;
+  const { count } = await supabase
+    .from('anonymous_messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('class_no', classNo)
+    .is('read_at', null);
+  return count ?? 0;
+}
+
+async function loadStudentData(
+  studentId: string,
+  set: (partial: Partial<Store>) => void,
+) {
+  if (!supabase) return;
+  const [myRow, myScores, ex, sch, myGoal] = await Promise.all([
+    supabase.from('students').select('*').eq('id_card', studentId).maybeSingle(),
+    supabase.from('exam_scores').select('*').eq('student_id', studentId),
+    supabase.from('exams').select('*'),
+    supabase.from('schedule_events').select('*'),
+    supabase
+      .from('student_goals')
+      .select('*')
+      .eq('student_id', studentId)
+      .maybeSingle(),
+  ]);
+  for (const r of [myRow, myScores, ex, sch, myGoal]) {
+    if (r.error) throw r.error;
+  }
+  const students = myRow.data ? [rowToStudent(myRow.data as AnyRow)] : [];
+  const scores = (myScores.data ?? []).map((r) => rowToScore(r as AnyRow));
+  const exams = (ex.data ?? []).map((r) => rowToExam(r as AnyRow));
+  const scheduleEvents = visibleRows(
+    (sch.data ?? []).map((r) => rowToSchedule(r as AnyRow)),
+    useAuthStore.getState().session,
+  );
+  const goals = myGoal.data
+    ? [rowToGoal(myGoal.data as AnyRow)]
+    : [];
+  set({
+    students,
+    scores,
+    exams,
+    examList: sortExamList(exams),
+    reminders: [],
+    scheduleEvents,
+    classTeachers: [],
+    goals,
+    dataLoaded: true,
+    supabaseError: null,
+  });
+}
 
 interface Store {
   dataLoaded: boolean;
@@ -326,9 +500,23 @@ interface Store {
   updateStudent: (idCard: string, updates: Partial<Student>) => void;
   removeStudent: (idCard: string) => void;
   removeStudents: (idCards: string[]) => void;
+  reassignClass: (updates: Record<string, number>, grade: string) => void;
+  updateParentInfo: (
+    updates: Record<string, Partial<Student>>,
+    classNo: number | null,
+  ) => Promise<void>;
 
   scores: Score[];
-  importExamFromExcel: (parsed: ParsedExamImport, examDate: string) => void;
+  gradeSummary: GradeSummaryRow[];
+  scoresLoading: number[];
+  loadedScoreClasses: number[];
+  loadScoresForClass: (classNo: number) => Promise<void>;
+  loadScoresForStudent: (studentId: string) => Promise<void>;
+  loadAllScores: () => Promise<void>;
+  importExamFromExcel: (
+    parsed: ParsedExamImport,
+    examDate: string,
+  ) => { imported: number; ignored: number };
   updateExamScores: (
     studentId: string,
     examId: string,
@@ -337,6 +525,13 @@ interface Store {
 
   classTeachers: ClassTeacher[];
   updateClassTeacher: (classNo: number, updates: Partial<ClassTeacher>) => void;
+
+  goals: StudentGoal[];
+  setStudentGoal: (studentId: string, totalGoal: number | null) => void;
+  updateStudentComment: (idCard: string, comment: string) => void;
+
+  unreadMessages: number;
+  refreshUnreadMessages: () => Promise<void>;
 
   scheduleEvents: ScheduleEvent[];
   addScheduleEvent: (e: Omit<ScheduleEvent, 'id'>) => void;
@@ -367,26 +562,68 @@ export const useStore = create<Store>((set, get) => ({
       return;
     }
     loadPromise = (async () => {
-      try {
-        const [stuRows, scoRows, ex, rem, sch, teachers] = await Promise.all([
-          fetchAllRows('students', [{ column: 'id_card', ascending: true }]),
-          fetchAllRows('exam_scores', [
-            { column: 'student_id', ascending: true },
-            { column: 'exam_id', ascending: true },
-            { column: 'subject', ascending: true },
-          ]),
-          supabase.from('exams').select('*'),
-          supabase.from('reminders').select('*'),
-          supabase.from('schedule_events').select('*'),
-          supabase.from('class_teachers').select('*').order('class_no'),
-        ]);
-        for (const r of [ex, rem, sch, teachers]) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const session = useAuthStore.getState().session;
+          if (session?.role === 'student' && session.studentId) {
+            await loadStudentData(session.studentId, set);
+            return;
+          } else {
+            // 班主任只加载本班学生与成绩（数千行，秒开）；admin 加载全部学生与轻表，
+            // 成绩改为按需：均分类统计走 RPC 聚合（gradeSummary），明细按班级/学生懒加载
+            const isTeacher = session?.role === 'admin' ? false : session?.role === 'teacher';
+        const classFilter = isTeacher && session?.classNo
+          ? { column: 'class_no', value: session.classNo }
+          : undefined;
+        const stuRows = await fetchAllRows(
+          'students',
+          [{ column: 'id_card', ascending: true }],
+          classFilter,
+        );
+        const classIds = stuRows.map((r) => String(r.id_card ?? ''));
+        const scoreFilter = isTeacher
+          ? classIds.length > 0
+            ? { column: 'student_id', value: classIds }
+            : { column: 'student_id', value: ['__none__'] }
+          : undefined;
+        const isAdmin = session?.role === 'admin';
+        const [scoRows, ex, rem, sch, teachers, goalRows, summaryRows] =
+          await withTimeout(
+            Promise.all([
+              scoreFilter
+                ? fetchAllRows(
+                    'exam_scores',
+                    [
+                      { column: 'student_id', ascending: true },
+                      { column: 'exam_id', ascending: true },
+                      { column: 'subject', ascending: true },
+                    ],
+                    scoreFilter,
+                  )
+                : Promise.resolve([]),
+              isAdmin
+                ? supabase
+                    .from('exams')
+                    .select('*')
+                    .eq('scope_class_no', 0)
+                : supabase.from('exams').select('*'),
+              supabase.from('reminders').select('*'),
+              supabase.from('schedule_events').select('*'),
+              supabase.from('class_teachers').select('*').order('class_no'),
+              supabase.from('student_goals').select('*'),
+              isAdmin
+                ? supabase.rpc('get_grade_summary')
+                : Promise.resolve({ data: null, error: null }),
+            ]),
+            30000,
+            'load initial tables',
+          );
+        for (const r of [ex, rem, sch, teachers, goalRows]) {
           if (r.error) throw r.error;
         }
         const students = stuRows.map((r) => rowToStudent(r));
         const scores = scoRows.map((r) => rowToScore(r));
         const exams = (ex.data ?? []).map((r) => rowToExam(r as AnyRow));
-        const session = useAuthStore.getState().session;
         const reminders = visibleRows(
           (rem.data ?? []).map((r) => rowToReminder(r as AnyRow)),
           session,
@@ -398,6 +635,13 @@ export const useStore = create<Store>((set, get) => ({
         const classTeachers = (teachers.data ?? []).map((r) =>
           rowToTeacher(r as AnyRow),
         );
+        const goals = (goalRows.data ?? []).map((r) =>
+          rowToGoal(r as AnyRow),
+        );
+        const gradeSummary = isAdmin
+          ? (summaryRows?.data ?? []).map((r) => rowToGradeSummary(r as AnyRow))
+          : [];
+        const unreadCount = await withTimeout(fetchUnreadCount(session), 15000, 'fetch unread count');
         set({
           students,
           scores,
@@ -406,20 +650,26 @@ export const useStore = create<Store>((set, get) => ({
           reminders: reminders.length ? reminders : [],
           scheduleEvents: scheduleEvents.length ? scheduleEvents : [],
           classTeachers,
+          goals,
+          gradeSummary,
+          unreadMessages: unreadCount,
           activeClass: get().activeClass,
           dataLoaded: true,
           supabaseError: null,
         });
-      } catch (e) {
-        console.error('[supabase] load failed', e);
-        set({
-          dataLoaded: true,
-          supabaseError: '云端数据加载失败，请检查网络后重试。',
-        });
-      } finally {
-        loadPromise = null;
+        return;
+        }
+        } catch (e) {
+          console.error(`[supabase] loadFromSupabase attempt ${attempt}/3 failed`, e);
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, 1500 * attempt));
+          }
+        }
       }
-    })();
+      set({ dataLoaded: true, supabaseError: '云端数据加载失败，请检查网络后重试。' });
+    })().finally(() => {
+      loadPromise = null;
+    });
     return loadPromise;
   },
 
@@ -430,6 +680,7 @@ export const useStore = create<Store>((set, get) => ({
       id: `exam-${Date.now()}`,
       name: name.trim(),
       date,
+      scopeClassNo: 0,
     };
     set((state) => {
       const exams = [...state.exams, exam];
@@ -465,10 +716,12 @@ export const useStore = create<Store>((set, get) => ({
 
   reminders: [],
   toggleReminder: (id) => {
+    const session = useAuthStore.getState().session;
     let toggled: Reminder | undefined;
     set((state) => ({
       reminders: state.reminders.map((r) => {
         if (r.id === id) {
+          if (!canModifyRow(r.owner, session)) return r;
           toggled = { ...r, completed: !r.completed };
           return toggled;
         }
@@ -488,6 +741,9 @@ export const useStore = create<Store>((set, get) => ({
     upsertReminders([newReminder]);
   },
   removeReminder: (id) => {
+    const session = useAuthStore.getState().session;
+    const target = get().reminders.find((r) => r.id === id);
+    if (!target || !canModifyRow(target.owner, session)) return;
     set((state) => ({
       reminders: state.reminders.filter((r) => r.id !== id),
     }));
@@ -500,6 +756,7 @@ export const useStore = create<Store>((set, get) => ({
       idCard: s.idCard.trim(),
       name: s.name.trim(),
       classNo: s.classNo,
+      grade: s.grade || '高一',
       selectedSubjects: s.selectedSubjects,
       fatherName: s.fatherName || '',
       fatherPhone: s.fatherPhone || '',
@@ -525,6 +782,53 @@ export const useStore = create<Store>((set, get) => ({
     }));
     if (updated) upsertStudents([updated]);
   },
+  updateParentInfo: async (updates, classNo) => {
+    if (!supabase) {
+      set((state) => ({
+        students: state.students.map((s) =>
+          updates[s.idCard] ? { ...s, ...updates[s.idCard] } : s,
+        ),
+      }));
+      return;
+    }
+    const session = useAuthStore.getState().session;
+    const isTeacher = session?.role === 'teacher';
+    const idCards = Object.keys(updates);
+    const updateRows = idCards.map((idCard) => {
+      const row: AnyRow = { id_card: idCard };
+      const u = updates[idCard];
+      if (u.fatherName !== undefined) row.father_name = u.fatherName || '';
+      if (u.fatherPhone !== undefined) row.father_phone = u.fatherPhone || '';
+      if (u.fatherWechat !== undefined) row.father_wechat = u.fatherWechat || '';
+      if (u.motherName !== undefined) row.mother_name = u.motherName || '';
+      if (u.motherPhone !== undefined) row.mother_phone = u.motherPhone || '';
+      if (u.motherWechat !== undefined) row.mother_wechat = u.motherWechat || '';
+      return row;
+    });
+    try {
+      // admin/teacher 均逐条按 id_card 更新（teacher 额外限定本班，RLS 兜底）
+      for (let i = 0; i < idCards.length; i++) {
+        let query = supabase
+          .from('students')
+          .update(updateRows[i])
+          .eq('id_card', idCards[i]);
+        if (isTeacher && classNo) {
+          query = query.eq('class_no', classNo);
+        }
+        const { error } = await query;
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.error('[supabase] update parent info failed', e);
+      set({ supabaseError: '家长信息保存失败，请检查网络后重试。' });
+      return;
+    }
+    set((state) => ({
+      students: state.students.map((s) =>
+        updates[s.idCard] ? { ...s, ...updates[s.idCard] } : s,
+      ),
+    }));
+  },
   removeStudent: (idCard) => {
     deleteStudentRows([idCard]);
     deleteScoresByStudents([idCard]);
@@ -544,27 +848,192 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   scores: [],
+  gradeSummary: [],
+  scoresLoading: [],
+  loadedScoreClasses: [],
+  loadScoresForClass: async (classNo) => {
+    if (!supabase) return;
+    const { loadedScoreClasses, scoresLoading } = get();
+    if (loadedScoreClasses.includes(classNo) || scoresLoading.includes(classNo)) {
+      return;
+    }
+    const session = useAuthStore.getState().session;
+    if (session?.role !== 'admin') return;
+    // 等待学生名单就绪（登录初期 students 尚未加载完成时）
+    const waitStart = Date.now();
+    while (get().students.length === 0) {
+      if (Date.now() - waitStart > 60000) return;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const classIds = get()
+      .students.filter((s) => s.classNo === classNo)
+      .map((s) => s.idCard);
+    if (classIds.length === 0) {
+      set({ loadedScoreClasses: [...get().loadedScoreClasses, classNo] });
+      return;
+    }
+    set({ scoresLoading: [...scoresLoading, classNo] });
+    try {
+      const rows = await fetchAllRows(
+        'exam_scores',
+        [
+          { column: 'student_id', ascending: true },
+          { column: 'exam_id', ascending: true },
+          { column: 'subject', ascending: true },
+        ],
+        { column: 'student_id', value: classIds },
+      );
+      const newScores = rows.map((r) => rowToScore(r));
+      set((state) => ({
+        scores: mergeScores(state.scores, newScores),
+        scoresLoading: state.scoresLoading.filter((c) => c !== classNo),
+        loadedScoreClasses: [...state.loadedScoreClasses, classNo],
+      }));
+    } catch (e) {
+      console.error('[supabase] load class scores failed', e);
+      set({ scoresLoading: get().scoresLoading.filter((c) => c !== classNo) });
+    }
+  },
+  loadScoresForStudent: async (studentId) => {
+    if (!supabase) return;
+    const { scores } = get();
+    const hasAllExams = (sid: string) => {
+      const set = new Set(scores.filter((s) => s.studentId === sid).map((s) => s.examId));
+      return set.size > 0 && set.size === get().exams.length;
+    };
+    if (hasAllExams(studentId)) return;
+    const { error, data } = await supabase
+      .from('exam_scores')
+      .select('*')
+      .eq('student_id', studentId);
+    if (error) {
+      console.error('[supabase] load student scores failed', error.message);
+      return;
+    }
+    const newScores = (data ?? []).map((r) => rowToScore(r as AnyRow));
+    set((state) => ({ scores: mergeScores(state.scores, newScores) }));
+  },
+  loadAllScores: async () => {
+    if (!supabase) return;
+    const { loadedScoreClasses, scoresLoading } = get();
+    if (scoresLoading.includes(0)) return;
+    // 先置位 loading 标记（单飞），再等待学生名单就绪
+    set({ scoresLoading: [...scoresLoading, 0] });
+    try {
+      const waitStart = Date.now();
+      while (get().students.length === 0) {
+        if (Date.now() - waitStart > 60000) return;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const allClasses = [...new Set(get().students.map((s) => s.classNo))];
+      const remaining = allClasses.filter((c) => !loadedScoreClasses.includes(c));
+      if (remaining.length === 0) return;
+      const idsByClass = new Map<number, string[]>();
+      for (const s of get().students) {
+        if (!remaining.includes(s.classNo)) continue;
+        const ids = idsByClass.get(s.classNo) ?? [];
+        ids.push(s.idCard);
+        idsByClass.set(s.classNo, ids);
+      }
+      let cursor = 0;
+      let failed = 0;
+      // 按班级并发拉取，班级数据到位即合并，页面可渐进填充而非一次性等待全表
+      const workers = Array.from({ length: 8 }, async () => {
+        while (true) {
+          const classNo = remaining[cursor++];
+          if (classNo === undefined) break;
+          const ids = idsByClass.get(classNo) ?? [];
+          if (ids.length === 0) {
+            set((state) => ({
+              loadedScoreClasses: [...state.loadedScoreClasses, classNo],
+            }));
+            continue;
+          }
+          try {
+            const rows = await fetchAllRows(
+              'exam_scores',
+              [
+                { column: 'student_id', ascending: true },
+                { column: 'exam_id', ascending: true },
+                { column: 'subject', ascending: true },
+              ],
+              { column: 'student_id', value: ids },
+            );
+            const newScores = rows.map((r) => rowToScore(r));
+            set((state) => ({
+              scores: mergeScores(state.scores, newScores),
+              loadedScoreClasses: [...state.loadedScoreClasses, classNo],
+            }));
+          } catch (e) {
+            failed++;
+            console.error('[supabase] load class scores failed', classNo, e);
+          }
+        }
+      });
+      await Promise.all(workers);
+      if (failed === remaining.length) {
+        set({ supabaseError: '云端数据加载失败，请检查网络后重试。' });
+      }
+    } finally {
+      set({ scoresLoading: get().scoresLoading.filter((c) => c !== 0) });
+    }
+  },
   importExamFromExcel: (parsed, examDate) => {
-    const existing = get().exams.find((e) => e.name === parsed.examName);
+    const session = useAuthStore.getState().session;
+    const isTeacher = session?.role === 'teacher';
+    const scopeClassNo = isTeacher ? session?.classNo ?? 0 : 0;
+
+    // 班主任仅导入本班成绩：过滤出本班学生与成绩，其余忽略并计数
+    let importStudents = parsed.students;
+    let importScores = parsed.scores;
+    let ignored = 0;
+    if (isTeacher) {
+      importStudents = parsed.students.filter((s) => s.classNo === scopeClassNo);
+      const ownIds = new Set(importStudents.map((s) => s.idCard));
+      importScores = parsed.scores.filter((s) => ownIds.has(s.studentId));
+      ignored =
+        parsed.students.length - importStudents.length +
+        (parsed.scores.length - importScores.length);
+    }
+
+    const existing = get().exams.find(
+      (e) => e.name === parsed.examName && e.scopeClassNo === scopeClassNo,
+    );
     const examId = existing?.id || `exam-${Date.now()}`;
-    const exam: Exam = { id: examId, name: parsed.examName, date: examDate };
-    const scoresWithExam = parsed.scores.map((s) => ({ ...s, examId }));
+    const exam: Exam = {
+      id: examId,
+      name: parsed.examName,
+      date: examDate,
+      scopeClassNo,
+    };
+    const scoresWithExam = importScores.map((s) => ({ ...s, examId }));
     const existingStudents = get().students;
     const byId = new Map(existingStudents.map((s) => [s.idCard, s]));
-    for (const s of parsed.students) {
+    for (const s of importStudents) {
       const old = byId.get(s.idCard);
       byId.set(
         s.idCard,
         old
-          ? { ...old, name: s.name, classNo: s.classNo, selectedSubjects: s.selectedSubjects }
+          ? {
+              ...old,
+              name: s.name,
+              selectedSubjects: s.selectedSubjects,
+              // 未分班学生用成绩表中的班级回填；已分班学生保持不动
+              classNo: old.classNo === 0 ? s.classNo : old.classNo,
+            }
           : s,
       );
     }
     const students = [...byId.values()];
-    const mergedImport = parsed.students.map((s) => {
+    const mergedImport = importStudents.map((s) => {
       const old = byId.get(s.idCard);
       return old && old !== s
-        ? { ...old, name: s.name, classNo: s.classNo, selectedSubjects: s.selectedSubjects }
+        ? {
+            ...old,
+            name: s.name,
+            selectedSubjects: s.selectedSubjects,
+            classNo: old.classNo === 0 ? s.classNo : old.classNo,
+          }
         : s;
     });
     set((state) => {
@@ -587,6 +1056,7 @@ export const useStore = create<Store>((set, get) => ({
     upsertExams([exam]);
     upsertStudents(mergedImport);
     upsertScores(scoresWithExam);
+    return { imported: importStudents.length, ignored };
   },
   updateExamScores: (studentId, examId, updates) => {
     let affected: Score[] = [];
@@ -647,6 +1117,58 @@ export const useStore = create<Store>((set, get) => ({
     if (updated) upsertClassTeacher(updated);
   },
 
+  goals: [],
+  setStudentGoal: (studentId, totalGoal) => {
+    const session = useAuthStore.getState().session;
+    if (!session || session.role === 'student' && session.studentId !== studentId) {
+      return;
+    }
+    const goal: StudentGoal = { studentId, totalGoal };
+    set((state) => ({
+      goals: [
+        ...state.goals.filter((g) => g.studentId !== studentId),
+        goal,
+      ],
+    }));
+    if (!supabase) return;
+    if (totalGoal == null) {
+      supabase
+        .from('student_goals')
+        .delete()
+        .eq('student_id', studentId)
+        .then(({ error }) => {
+          if (error) console.error('[supabase] delete goal failed:', error.message);
+        });
+    } else {
+      supabase
+        .from('student_goals')
+        .upsert({ student_id: studentId, total_goal: totalGoal })
+        .then(({ error }) => {
+          if (error) console.error('[supabase] upsert goal failed:', error.message);
+        });
+    }
+  },
+  updateStudentComment: (idCard, comment) => {
+    let updated: Student | undefined;
+    set((state) => ({
+      students: state.students.map((s) => {
+        if (s.idCard === idCard) {
+          updated = { ...s, teacherComment: comment };
+          return updated;
+        }
+        return s;
+      }),
+    }));
+    if (updated) upsertStudents([updated]);
+  },
+
+  unreadMessages: 0,
+  refreshUnreadMessages: async () => {
+    const session = useAuthStore.getState().session;
+    const count = await fetchUnreadCount(session);
+    set({ unreadMessages: count });
+  },
+
   scheduleEvents: [...initialScheduleEvents],
   addScheduleEvent: (e) => {
     const session = useAuthStore.getState().session;
@@ -660,14 +1182,61 @@ export const useStore = create<Store>((set, get) => ({
     upsertSchedule([newEvent]);
   },
   removeScheduleEvent: (id) => {
+    const session = useAuthStore.getState().session;
+    const target = get().scheduleEvents.find((e) => e.id === id);
+    if (!target || !canModifyRow(target.owner, session)) return;
     set((state) => ({
       scheduleEvents: state.scheduleEvents.filter((e) => e.id !== id),
     }));
     deleteScheduleRow(id);
   },
 
+  reassignClass: (updates, grade) => {
+    // updates: idCard -> classNo（考勤分班后学生班级映射）
+    const session = useAuthStore.getState().session;
+    if (session?.role !== 'admin') return;
+    const byClass = new Map<number, { idCards: string[] }>();
+    for (const [idCard, classNo] of Object.entries(updates)) {
+      if (!byClass.has(classNo)) byClass.set(classNo, { idCards: [] });
+      byClass.get(classNo)!.idCards.push(idCard);
+    }
+    if (!supabase) {
+      // 本地模式：直接在 store 更新
+      set((state) => ({
+        students: state.students.map((s) => {
+          const no = updates[s.idCard];
+          if (no === undefined) return s;
+          return { ...s, classNo: no === 0 ? 0 : no, grade };
+        }),
+      }));
+      return;
+    }
+    Promise.all(
+      [...byClass.entries()].map(async ([classNo, { idCards }]) => {
+        const { error } = await supabase
+          .from('students')
+          .update({ class_no: classNo, grade })
+          .in('id_card', idCards);
+        if (error) console.error('[supabase] reassign class failed:', error.message);
+      }),
+    );
+    set((state) => ({
+      students: state.students.map((s) => {
+        const no = updates[s.idCard];
+        if (no === undefined) return s;
+        return { ...s, classNo: no === 0 ? 0 : no, grade };
+      }),
+    }));
+  },
+
   activeClass: 0,
-  setActiveClass: (cls) => set({ activeClass: cls }),
+  setActiveClass: (cls) => {
+    set({ activeClass: cls });
+    const session = useAuthStore.getState().session;
+    if (session?.role !== 'admin') return;
+    if (cls > 0) get().loadScoresForClass(cls);
+    if (cls === 0) get().loadAllScores();
+  },
 
   sidebarOpen: false,
   openSidebar: () => set({ sidebarOpen: true }),
