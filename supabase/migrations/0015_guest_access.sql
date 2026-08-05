@@ -9,30 +9,37 @@
 begin;
 
 -- ============ 访客只读策略（current_role() 读取 app_metadata.role） ============
+drop policy if exists "guest read students" on public.students;
 create policy "guest read students" on public.students
   for select to authenticated
   using (public.current_role() = 'guest');
 
+drop policy if exists "guest read exam_scores" on public.exam_scores;
 create policy "guest read exam_scores" on public.exam_scores
   for select to authenticated
   using (public.current_role() = 'guest');
 
+drop policy if exists "guest read exams" on public.exams;
 create policy "guest read exams" on public.exams
   for select to authenticated
   using (public.current_role() = 'guest');
 
+drop policy if exists "guest read class_teachers" on public.class_teachers;
 create policy "guest read class_teachers" on public.class_teachers
   for select to authenticated
   using (public.current_role() = 'guest');
 
+drop policy if exists "guest read schedule_events" on public.schedule_events;
 create policy "guest read schedule_events" on public.schedule_events
   for select to authenticated
   using (public.current_role() = 'guest');
 
+drop policy if exists "guest read reminders" on public.reminders;
 create policy "guest read reminders" on public.reminders
   for select to authenticated
   using (public.current_role() = 'guest');
 
+drop policy if exists "guest read anonymous_messages" on public.anonymous_messages;
 create policy "guest read anonymous_messages" on public.anonymous_messages
   for select to authenticated
   using (public.current_role() = 'guest');
