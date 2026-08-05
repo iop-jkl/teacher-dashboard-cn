@@ -412,23 +412,47 @@ export default function SettingsPage() {
             </div>
 
             {isGuest ? (
-              <div className="space-y-2">
-                {visibleTeachers.map((t) => (
-                  <div
-                    key={t.classNo}
-                    className="flex items-center gap-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2"
-                  >
-                    <span className="w-16 text-sm font-medium text-gray-800">
+              <div className="space-y-3">
+                <select
+                  value={selectedTeacherClass ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSelectedTeacherClass(v ? Number(v) : null);
+                  }}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-gray-700 focus:outline-none focus:border-[#2dd4bf]/40"
+                >
+                  <option value="">请选择班级…</option>
+                  {classTeachers.map((t) => (
+                    <option key={t.classNo} value={t.classNo}>
                       {t.classNo}班
-                    </span>
-                    <span className="text-sm text-gray-600">
-                      班主任：{t.teacherName ? maskField(t.teacherName) : '未设置'}
-                    </span>
-                  </div>
-                ))}
-                {visibleTeachers.length === 0 && (
+                    </option>
+                  ))}
+                </select>
+
+                {selectedTeacherClass !== null &&
+                  (() => {
+                    const t = classTeachers.find((x) => x.classNo === selectedTeacherClass);
+                    if (!t) {
+                      return (
+                        <div className="py-6 text-center text-sm text-gray-400">
+                          未找到该班级
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex items-center gap-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="w-16 text-sm font-medium text-gray-800">
+                          {t.classNo}班
+                        </span>
+                        <span className="text-sm text-gray-600">
+                          班主任：{t.teacherName ? maskField(t.teacherName) : '未设置'}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                {selectedTeacherClass === null && (
                   <div className="py-6 text-center text-sm text-gray-400">
-                    暂无班主任账号
+                    请选择班级后查看班主任信息
                   </div>
                 )}
               </div>

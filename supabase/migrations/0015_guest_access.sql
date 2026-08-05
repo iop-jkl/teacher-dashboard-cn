@@ -33,6 +33,10 @@ create policy "guest read reminders" on public.reminders
   for select to authenticated
   using (public.current_role() = 'guest');
 
+create policy "guest read anonymous_messages" on public.anonymous_messages
+  for select to authenticated
+  using (public.current_role() = 'guest');
+
 -- ============ 均分聚合 RPC 允许访客（仅聚合数据） ============
 create or replace function public.get_grade_summary()
 returns table (

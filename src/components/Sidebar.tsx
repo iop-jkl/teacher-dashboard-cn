@@ -58,7 +58,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     setActivePage(item.key);
     navigate(item.path);
     closeSidebar();
-    if (item.path === '/messages' && session?.role === 'teacher') {
+    if (item.path === '/messages' && (session?.role === 'teacher' || session?.role === 'guest')) {
       refreshUnreadMessages();
     }
   };
@@ -81,7 +81,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         : `${session?.classNo ?? ''}班 · 班主任`;
   const items = isStudent
     ? studentItems
-    : session?.role === 'teacher'
+    : session?.role === 'teacher' || session?.role === 'guest'
       ? [
           ...staffNavItems
             .filter((i) => i.key !== 'settings')

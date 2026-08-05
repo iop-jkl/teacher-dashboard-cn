@@ -29,8 +29,8 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isTeacher && session?.classNo) {
-      loadMessages(session.classNo);
+    if (isTeacher) {
+      loadMessages(session?.classNo ?? 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTeacher, session?.classNo]);
@@ -39,11 +39,9 @@ export default function MessagesPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('anonymous_messages')
-        .select('*')
-        .eq('class_no', classNo)
-        .order('created_at', { ascending: false });
+      let query = supabase.from('anonymous_messages').select('*');
+      if (classNo > 0) query = query.eq('class_no', classNo);
+      const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
       setMessages((data ?? []) as AnonymousMessage[]);
       refreshUnreadMessages();
@@ -238,6 +236,11 @@ export default function MessagesPage() {
                           </span>
                         )}
                         <span className="text-xs text-gray-400">
+                          {isGuest && (
+                            <span className="text-purple-600 font-medium mr-1.5">
+                              第{m.class_no}班
+                            </span>
+                          )}
                           {new Date(m.created_at).toLocaleString('zh-CN')}
                         </span>
                       </div>

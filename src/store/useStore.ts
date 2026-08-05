@@ -432,12 +432,14 @@ async function fetchUnreadCount(
 ): Promise<number> {
   if (!supabase) return 0;
   const { role, classNo } = session ?? { role: '', classNo: 0 };
-  if (role !== 'teacher' || !classNo) return 0;
-  const { count } = await supabase
+  if (role !== 'teacher' && role !== 'guest') return 0;
+  if (role === 'teacher' && !classNo) return 0;
+  let query = supabase
     .from('anonymous_messages')
     .select('*', { count: 'exact', head: true })
-    .eq('class_no', classNo)
     .is('read_at', null);
+  if (role === 'teacher') query = query.eq('class_no', classNo);
+  const { count } = await query;
   return count ?? 0;
 }
 
