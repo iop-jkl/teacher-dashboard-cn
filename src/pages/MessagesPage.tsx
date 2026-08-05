@@ -210,6 +210,12 @@ export default function MessagesPage() {
                 </div>
               </div>
 
+              {isGuest && (
+                <div className="rounded-lg border border-purple-100 bg-purple-50/60 px-3 py-2 text-xs text-purple-600">
+                  以下为演示示例信件，真实匿名信对学生与老师保密，访客不可见。
+                </div>
+              )}
+
               {loading ? (
                 <div className="py-8 text-center text-sm text-gray-400">加载中...</div>
               ) : messages.length === 0 ? (
