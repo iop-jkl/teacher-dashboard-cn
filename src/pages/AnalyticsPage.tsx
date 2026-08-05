@@ -22,6 +22,7 @@ import {
   buildExamValueMap,
   totalForIndexed,
 } from '@/lib/scoreUtils';
+import { isGuestRole, maskName } from '@/lib/privacy';
 
 type ViewType = 'trend' | 'ranking';
 
@@ -45,7 +46,8 @@ export default function AnalyticsPage() {
     loadScoresForClass,
   } = useStore();
   const session = useAuthStore((s) => s.session);
-  const isAdmin = session?.role === 'admin';
+  const isAdmin = session?.role === 'admin' || session?.role === 'guest';
+  const isGuest = isGuestRole(session?.role);
   const allClassCount = useMemo(
     () => new Set(students.map((s) => s.classNo)).size,
     [students],
@@ -436,7 +438,9 @@ export default function AnalyticsPage() {
                           {idx + 1}
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {isGuest ? maskName(s.name, s.id) : s.name}
+                          </p>
                           <p className="text-xs text-gray-500">
                             {examName} · 总分 {s.total.toFixed(2)}
                           </p>
@@ -469,7 +473,9 @@ export default function AnalyticsPage() {
                           {idx + 1}
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {isGuest ? maskName(s.name, s.id) : s.name}
+                          </p>
                           <p className="text-xs text-gray-500">
                             {examName} · 总分 {s.total.toFixed(2)}
                           </p>

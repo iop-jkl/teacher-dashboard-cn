@@ -27,6 +27,7 @@ import {
 } from '@/lib/scoreUtils';
 import type { Student } from '@/types';
 import { generatePassword, resetPassword } from '@/lib/password';
+import { isGuestRole, maskName, maskIdCard, maskField } from '@/lib/privacy';
 
 const SELECTABLE = ['政治', '历史', '地理', '物理', '化学', '生物'];
 
@@ -55,7 +56,11 @@ export default function StudentsPage() {
   const showToast = useToastStore((s) => s.showToast);
   const navigate = useNavigate();
 
-  const isAdmin = session?.role === 'admin';
+  const isAdmin = session?.role === 'admin' || session?.role === 'guest';
+  const isGuest = isGuestRole(session?.role);
+  const canWrite = !isGuest;
+  const displayName = (s: Student) => (isGuest ? maskName(s.name, s.idCard) : s.name);
+  const displayIdCard = (s: Student) => (isGuest ? maskIdCard(s.idCard) : s.idCard);
   const allClassCount = useMemo(
     () => new Set(students.map((s) => s.classNo)).size,
     [students],
@@ -151,12 +156,14 @@ export default function StudentsPage() {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (e) =>
-          e.student.name.toLowerCase().includes(q) ||
+          (isGuest
+            ? maskName(e.student.name, e.student.idCard).toLowerCase().includes(q)
+            : e.student.name.toLowerCase().includes(q)) ||
           e.student.idCard.toLowerCase().includes(q),
       );
     }
     return result;
-  }, [ranked, searchQuery]);
+  }, [ranked, searchQuery, isGuest]);
 
   useEffect(() => {
     setPage(0);
@@ -406,13 +413,15 @@ export default function StudentsPage() {
                 </select>
               )}
               <ExcelExportButton />
-              <button
-                onClick={handleAddStudent}
-                className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
-              >
-                <UserPlus className="w-4 h-4" />
-                添加
-              </button>
+              {canWrite && (
+                <button
+                  onClick={handleAddStudent}
+                  className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  添加
+                </button>
+              )}
               <UserMenu />
             </div>
           </div>
@@ -432,7 +441,7 @@ export default function StudentsPage() {
             </div>
           </div>
 
-          {selectedIds.length > 0 && (
+          {selectedIds.length > 0 && canWrite && (
             <div className="flex items-center justify-between gap-3 bg-white rounded-xl border border-gray-200 p-3 flex-wrap">
               <span className="text-sm text-gray-600">已选 {selectedIds.length} 人</span>
               <button
@@ -449,33 +458,35 @@ export default function StudentsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="px-4 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={
-                          filtered.length > 0 &&
-                          filtered.every((e) => selectedIds.includes(e.student.idCard))
-                        }
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedIds((prev) => [
-                              ...new Set([
-                                ...prev,
-                                ...filtered.map((x) => x.student.idCard),
-                              ]),
-                            ]);
-                          } else {
-                            setSelectedIds((prev) =>
-                              prev.filter(
-                                (id) =>
-                                  !filtered.some((x) => x.student.idCard === id),
-                              ),
-                            );
+                    {canWrite && (
+                      <th className="px-4 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={
+                            filtered.length > 0 &&
+                            filtered.every((e) => selectedIds.includes(e.student.idCard))
                           }
-                        }}
-                        className="accent-[#2dd4bf]"
-                      />
-                    </th>
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedIds((prev) => [
+                                ...new Set([
+                                  ...prev,
+                                  ...filtered.map((x) => x.student.idCard),
+                                ]),
+                              ]);
+                            } else {
+                              setSelectedIds((prev) =>
+                                prev.filter(
+                                  (id) =>
+                                    !filtered.some((x) => x.student.idCard === id),
+                                ),
+                              );
+                            }
+                          }}
+                          className="accent-[#2dd4bf]"
+                        />
+                      </th>
+                    )}
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">学生</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">年级</th>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500">身份证号</th>
@@ -490,24 +501,26 @@ export default function StudentsPage() {
                       key={entry.student.idCard}
                       className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
                     >
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(entry.student.idCard)}
-                          onChange={() => toggleSelect(entry.student.idCard)}
-                          className="accent-[#2dd4bf]"
-                        />
-                      </td>
+                      {canWrite && (
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(entry.student.idCard)}
+                            onChange={() => toggleSelect(entry.student.idCard)}
+                            className="accent-[#2dd4bf]"
+                          />
+                        </td>
+                      )}
                       <td className="px-5 py-3">
                         <button
                           onClick={() => setSelectedStudent(entry.student)}
                           className="flex items-center gap-3 group"
                         >
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-xs font-medium">
-                            {entry.student.name.charAt(0)}
+                            {displayName(entry.student).charAt(0)}
                           </div>
                           <span className="text-sm font-medium text-gray-900 group-hover:text-[#2dd4bf] transition-colors">
-                            {entry.student.name}
+                            {displayName(entry.student)}
                           </span>
                         </button>
                       </td>
@@ -516,7 +529,7 @@ export default function StudentsPage() {
                           {entry.student.grade || '高一'}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">{entry.student.idCard}</td>
+                      <td className="px-5 py-3 text-sm text-gray-600">{displayIdCard(entry.student)}</td>
                       <td className="px-5 py-3 text-sm text-gray-600">{entry.student.classNo === 0 ? '待分班' : `${entry.student.classNo}班`}</td>
                       <td className="px-5 py-3">
                         <div className="flex gap-1">
@@ -539,13 +552,15 @@ export default function StudentsPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteStudent(entry.student.idCard)}
-                            className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                            title="删除"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canWrite && (
+                            <button
+                              onClick={() => handleDeleteStudent(entry.student.idCard)}
+                              className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                              title="删除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -557,27 +572,29 @@ export default function StudentsPage() {
             <div className="lg:hidden divide-y divide-gray-100">
               {pagedFiltered.map((entry) => (
                 <div key={entry.student.idCard} className="p-4 flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(entry.student.idCard)}
-                    onChange={() => toggleSelect(entry.student.idCard)}
-                    className="accent-[#2dd4bf] shrink-0"
-                  />
+                  {canWrite && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(entry.student.idCard)}
+                      onChange={() => toggleSelect(entry.student.idCard)}
+                      className="accent-[#2dd4bf] shrink-0"
+                    />
+                  )}
                   <button
                     onClick={() => setSelectedStudent(entry.student)}
                     className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-sm font-medium shrink-0"
                   >
-                    {entry.student.name.charAt(0)}
+                    {displayName(entry.student).charAt(0)}
                   </button>
                   <button
                     onClick={() => setSelectedStudent(entry.student)}
                     className="flex-1 min-w-0 text-left"
                   >
                     <span className="text-sm font-medium text-gray-900 truncate">
-                      {entry.student.name}
+                      {displayName(entry.student)}
                     </span>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {entry.student.grade || '高一'} · {entry.student.classNo === 0 ? '待分班' : `${entry.student.classNo}班`} · {entry.student.idCard}
+                      {entry.student.grade || '高一'} · {entry.student.classNo === 0 ? '待分班' : `${entry.student.classNo}班`} · {displayIdCard(entry.student)}
                     </p>
                   </button>
                   <button
@@ -630,14 +647,14 @@ export default function StudentsPage() {
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-lg font-medium">
-                  {selectedStudent.name.charAt(0)}
+                  {displayName(selectedStudent).charAt(0)}
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">
-                    {selectedStudent.name}
+                    {displayName(selectedStudent)}
                   </h3>
                   <p className="text-xs text-gray-500">
-                    {selectedStudent.idCard} · {selectedStudent.classNo}班
+                    {displayIdCard(selectedStudent)} · {selectedStudent.classNo}班
                   </p>
                 </div>
               </div>
@@ -693,7 +710,7 @@ export default function StudentsPage() {
 
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-medium text-gray-900">各科成绩</h4>
-                {isAdmin && (
+                {isAdmin && canWrite && (
                   <button
                     onClick={() => (editMode ? setEditMode(false) : startEditScores())}
                     className="px-3 py-1.5 text-xs rounded-lg border border-[#2dd4bf]/30 text-[#2dd4bf] hover:bg-[#2dd4bf]/5 transition-colors"
@@ -808,11 +825,12 @@ export default function StudentsPage() {
                       <label className="block text-xs text-gray-500 mb-1">{label}</label>
                       <input
                         type="text"
-                        value={parentDraft[key]}
+                        value={isGuest ? maskField(parentDraft[key]) : parentDraft[key]}
                         onChange={(e) =>
                           setParentDraft((prev) => ({ ...prev, [key]: e.target.value }))
                         }
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+                        disabled={isGuest}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 disabled:bg-gray-50 disabled:text-gray-400"
                       />
                     </div>
                   ))}
@@ -825,11 +843,12 @@ export default function StudentsPage() {
                   <span className="text-xs text-gray-400">{remarkDraft.length} 字</span>
                 </div>
                 <textarea
-                  value={remarkDraft}
+                  value={isGuest ? maskField(remarkDraft) : remarkDraft}
                   onChange={(e) => setRemarkDraft(e.target.value)}
+                  disabled={isGuest}
                   placeholder="输入对该学生的备注，如学习状态、家长沟通要点等"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
             </div>
@@ -857,7 +876,7 @@ export default function StudentsPage() {
               >
                 查看完整档案
               </button>
-              {isAdmin && editMode && (
+              {isAdmin && editMode && canWrite && (
                 <button
                   onClick={handleSaveScoreDrafts}
                   className="px-4 py-2 text-sm text-white bg-[#1e3a5f] rounded-lg hover:bg-[#162c48] transition-colors"
@@ -865,13 +884,15 @@ export default function StudentsPage() {
                   保存成绩
                 </button>
               )}
-              <button
-                onClick={handleSaveStudentInfo}
-                className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                保存
-              </button>
+              {canWrite && (
+                <button
+                  onClick={handleSaveStudentInfo}
+                  className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  保存
+                </button>
+              )}
             </div>
           </div>
         </div>

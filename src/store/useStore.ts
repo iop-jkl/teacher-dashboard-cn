@@ -192,7 +192,7 @@ function visibleRows<T extends { owner?: string }>(
   session: { role: string; classNo: number } | null,
 ): T[] {
   if (!session) return rows.filter((r) => !r.owner || r.owner === 'admin');
-  if (session.role === 'admin') {
+  if (session.role === 'admin' || session.role === 'guest') {
     return rows.filter((r) => !r.owner || r.owner === 'admin');
   }
   if (session.role === 'student') {
@@ -205,12 +205,12 @@ function visibleRows<T extends { owner?: string }>(
 }
 
 // 可修改判断：admin 数据（owner 为空视为 admin 创建）仅管理员可改；
-// 班主任只能改自己创建的
+// 班主任只能改自己创建的；访客一律不可改
 export function canModifyRow(
   owner: string | undefined,
   session: { role: string; classNo: number } | null,
 ): boolean {
-  if (!session || session.role === 'student') return false;
+  if (!session || session.role === 'student' || session.role === 'guest') return false;
   if (session.role === 'admin') return true;
   if (!owner || owner === 'admin') return false;
   return owner === String(session.classNo);
@@ -422,6 +422,11 @@ async function fetchAllRows(
 
 let loadPromise: Promise<void> | null = null;
 
+/** 访客为只读演示模式：所有写操作一律拦截 */
+function isGuestSession(): boolean {
+  return useAuthStore.getState().session?.role === 'guest';
+}
+
 async function fetchUnreadCount(
   session: { role: string; classNo: number } | null,
 ): Promise<number> {
@@ -572,7 +577,7 @@ export const useStore = create<Store>((set, get) => ({
             // 班主任只加载本班学生与成绩（数千行，秒开）；admin 加载全部学生与轻表，
             // 成绩改为按需：均分类统计走 RPC 聚合（gradeSummary），明细按班级/学生懒加载
             const isTeacher = session?.role === 'admin' ? false : session?.role === 'teacher';
-        const classFilter = isTeacher && session?.classNo
+            const classFilter = isTeacher && session?.classNo
           ? { column: 'class_no', value: session.classNo }
           : undefined;
         const stuRows = await fetchAllRows(
@@ -586,7 +591,7 @@ export const useStore = create<Store>((set, get) => ({
             ? { column: 'student_id', value: classIds }
             : { column: 'student_id', value: ['__none__'] }
           : undefined;
-        const isAdmin = session?.role === 'admin';
+        const isAdmin = session?.role === 'admin' || session?.role === 'guest';
         const [scoRows, ex, rem, sch, teachers, goalRows, summaryRows] =
           await withTimeout(
             Promise.all([
@@ -676,6 +681,7 @@ export const useStore = create<Store>((set, get) => ({
   exams: [],
   examList: [],
   addExam: (name, date) => {
+    if (isGuestSession()) return;
     const exam: Exam = {
       id: `exam-${Date.now()}`,
       name: name.trim(),
@@ -689,6 +695,7 @@ export const useStore = create<Store>((set, get) => ({
     upsertExams([exam]);
   },
   removeExam: (id) => {
+    if (isGuestSession()) return;
     deleteExamRow(id);
     set((state) => {
       const exams = state.exams.filter((e) => e.id !== id);
@@ -700,6 +707,7 @@ export const useStore = create<Store>((set, get) => ({
     });
   },
   updateExamDate: (id, date) => {
+    if (isGuestSession()) return;
     let updated: Exam | undefined;
     set((state) => {
       const exams = state.exams.map((e) => {
@@ -731,6 +739,7 @@ export const useStore = create<Store>((set, get) => ({
     if (toggled) upsertReminders([toggled]);
   },
   addReminder: (r) => {
+    if (isGuestSession()) return;
     const session = useAuthStore.getState().session;
     const newReminder: Reminder = {
       ...r,
@@ -752,6 +761,7 @@ export const useStore = create<Store>((set, get) => ({
 
   students: [],
   addStudent: (s) => {
+    if (isGuestSession()) return;
     const student: Student = {
       idCard: s.idCard.trim(),
       name: s.name.trim(),
@@ -770,6 +780,7 @@ export const useStore = create<Store>((set, get) => ({
     upsertStudents([student]);
   },
   updateStudent: (idCard, updates) => {
+    if (isGuestSession()) return;
     let updated: Student | undefined;
     set((state) => ({
       students: state.students.map((s) => {
@@ -783,6 +794,7 @@ export const useStore = create<Store>((set, get) => ({
     if (updated) upsertStudents([updated]);
   },
   updateParentInfo: async (updates, classNo) => {
+    if (isGuestSession()) return;
     if (!supabase) {
       set((state) => ({
         students: state.students.map((s) =>
@@ -830,6 +842,7 @@ export const useStore = create<Store>((set, get) => ({
     }));
   },
   removeStudent: (idCard) => {
+    if (isGuestSession()) return;
     deleteStudentRows([idCard]);
     deleteScoresByStudents([idCard]);
     set((state) => ({
@@ -838,7 +851,7 @@ export const useStore = create<Store>((set, get) => ({
     }));
   },
   removeStudents: (idCards) => {
-    if (idCards.length === 0) return;
+    if (isGuestSession() || idCards.length === 0) return;
     deleteStudentRows(idCards);
     deleteScoresByStudents(idCards);
     set((state) => ({
@@ -858,7 +871,7 @@ export const useStore = create<Store>((set, get) => ({
       return;
     }
     const session = useAuthStore.getState().session;
-    if (session?.role !== 'admin') return;
+    if (session?.role !== 'admin' && session?.role !== 'guest') return;
     // 等待学生名单就绪（登录初期 students 尚未加载完成时）
     const waitStart = Date.now();
     while (get().students.length === 0) {
@@ -979,6 +992,7 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
   importExamFromExcel: (parsed, examDate) => {
+    if (isGuestSession()) return { imported: 0, ignored: 0 };
     const session = useAuthStore.getState().session;
     const isTeacher = session?.role === 'teacher';
     const scopeClassNo = isTeacher ? session?.classNo ?? 0 : 0;
@@ -1059,6 +1073,7 @@ export const useStore = create<Store>((set, get) => ({
     return { imported: importStudents.length, ignored };
   },
   updateExamScores: (studentId, examId, updates) => {
+    if (isGuestSession()) return;
     let affected: Score[] = [];
     set((state) => {
       let next = state.scores.map((s) => {
@@ -1104,6 +1119,7 @@ export const useStore = create<Store>((set, get) => ({
 
   classTeachers: [],
   updateClassTeacher: (classNo, updates) => {
+    if (isGuestSession()) return;
     let updated: ClassTeacher | undefined;
     set((state) => ({
       classTeachers: state.classTeachers.map((t) => {
@@ -1119,6 +1135,7 @@ export const useStore = create<Store>((set, get) => ({
 
   goals: [],
   setStudentGoal: (studentId, totalGoal) => {
+    if (isGuestSession()) return;
     const session = useAuthStore.getState().session;
     if (!session || session.role === 'student' && session.studentId !== studentId) {
       return;
@@ -1149,6 +1166,7 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
   updateStudentComment: (idCard, comment) => {
+    if (isGuestSession()) return;
     let updated: Student | undefined;
     set((state) => ({
       students: state.students.map((s) => {
@@ -1171,6 +1189,7 @@ export const useStore = create<Store>((set, get) => ({
 
   scheduleEvents: [...initialScheduleEvents],
   addScheduleEvent: (e) => {
+    if (isGuestSession()) return;
     const session = useAuthStore.getState().session;
     const newEvent: ScheduleEvent = {
       ...e,
@@ -1233,7 +1252,7 @@ export const useStore = create<Store>((set, get) => ({
   setActiveClass: (cls) => {
     set({ activeClass: cls });
     const session = useAuthStore.getState().session;
-    if (session?.role !== 'admin') return;
+    if (session?.role !== 'admin' && session?.role !== 'guest') return;
     if (cls > 0) get().loadScoresForClass(cls);
     if (cls === 0) get().loadAllScores();
   },

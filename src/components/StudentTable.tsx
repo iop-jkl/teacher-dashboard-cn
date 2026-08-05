@@ -14,6 +14,7 @@ import {
 } from '@/lib/scoreUtils';
 import { ALL_SUBJECTS } from '@/data/mockData';
 import { cn } from '@/lib/utils';
+import { isGuestRole, maskName, maskIdCard } from '@/lib/privacy';
 import Pagination from '@/components/Pagination';
 
 const PAGE_SIZE = 100;
@@ -37,6 +38,9 @@ export default function StudentTable({
   const updateExamScores = useStore((s) => s.updateExamScores);
   const session = useAuthStore((s) => s.session);
   const showToast = useToastStore((s) => s.showToast);
+  const isGuest = isGuestRole(session?.role);
+  const displayName = (s: Student) => (isGuest ? maskName(s.name, s.idCard) : s.name);
+  const displayIdCard = (s: Student) => (isGuest ? maskIdCard(s.idCard) : s.idCard);
   const canEdit = session?.role === 'admin';
   const [sortKey, setSortKey] = useState('总分');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
@@ -219,17 +223,17 @@ export default function StudentTable({
                     className="flex items-center gap-2"
                   >
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-xs font-medium">
-                      {row.student.name.charAt(0)}
+                      {displayName(row.student).charAt(0)}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {row.student.name}
+                        {displayName(row.student)}
                       </p>
                       <p className="text-xs text-gray-400">{row.student.classNo}班</p>
                     </div>
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{row.student.idCard}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{displayIdCard(row.student)}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{row.student.classNo}班</td>
                 <td className="px-4 py-3 text-right text-sm font-semibold text-[#1e3a5f]">
                   {row.total.toFixed(2)}
@@ -296,7 +300,7 @@ export default function StudentTable({
               </span>
               <Link to={`/student/${row.student.idCard}`} className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {row.student.name}
+                  {displayName(row.student)}
                 </p>
                 <p className="text-xs text-gray-400">
                   {row.student.classNo}班 · 总分 {row.total.toFixed(2)}
@@ -336,7 +340,7 @@ export default function StudentTable({
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">
-                  {editingStudent.name} · 编辑成绩
+                  {displayName(editingStudent)} · 编辑成绩
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {exams.find((e) => e.id === activeExamId)?.name || ''}

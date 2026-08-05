@@ -9,6 +9,8 @@ import {
 } from '@/lib/scoreUtils';
 import type { Score, Student } from '@/types';
 import Pagination from '@/components/Pagination';
+import { useAuthStore } from '@/store/useAuth';
+import { isGuestRole, maskName } from '@/lib/privacy';
 
 const PAGE_SIZE = 100;
 
@@ -31,6 +33,9 @@ export default function ScoreRankTable({
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [page, setPage] = useState(0);
   const index = useMemo(() => buildScoreIndex(scores), [scores]);
+  const session = useAuthStore((s) => s.session);
+  const isGuest = isGuestRole(session?.role);
+  const displayName = (s: Student) => (isGuest ? maskName(s.name, s.idCard) : s.name);
 
   useEffect(() => {
     setPage(0);
@@ -155,10 +160,10 @@ export default function ScoreRankTable({
                 <td className="px-3 py-2.5">
                   <Link to={`/student/${row.student.idCard}`} className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-xs font-medium">
-                      {row.student.name.charAt(0)}
+                      {displayName(row.student).charAt(0)}
                     </div>
                     <span className="text-sm font-medium text-gray-900">
-                      {row.student.name}
+                      {displayName(row.student)}
                     </span>
                   </Link>
                 </td>

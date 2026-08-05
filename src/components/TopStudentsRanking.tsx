@@ -1,5 +1,7 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/useAuth';
+import { isGuestRole, maskName } from '@/lib/privacy';
 
 interface RankedStudent {
   id: string;
@@ -16,6 +18,7 @@ interface Props {
 
 export default function TopStudentsRanking({ title, type, students }: Props) {
   const isImprove = type === 'improve';
+  const isGuest = isGuestRole(useAuthStore((s) => s.session)?.role);
 
   const rankColors = [
     'bg-yellow-100 text-yellow-700',
@@ -56,7 +59,7 @@ export default function TopStudentsRanking({ title, type, students }: Props) {
 
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
-                {student.name}
+                {isGuest ? maskName(student.name, student.id) : student.name}
               </p>
               <p className="text-xs text-gray-400">
                 总分 {student.total}

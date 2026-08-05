@@ -26,8 +26,10 @@ import ToastContainer from '@/components/ToastContainer';
 import RadarChart from '@/components/RadarChart';
 import ScoreChart from '@/components/ScoreChart';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuth';
 import { useToastStore } from '@/store/useToast';
 import { subjectScore, scoreValue, totalFor } from '@/lib/scoreUtils';
+import { isGuestRole, maskName, maskIdCard, maskField } from '@/lib/privacy';
 import type { Student } from '@/types';
 
 export default function StudentDetail() {
@@ -46,6 +48,7 @@ export default function StudentDetail() {
     loadScoresForStudent,
   } = useStore();
   const showToast = useToastStore((s) => s.showToast);
+  const isGuest = isGuestRole(useAuthStore((s) => s.session)?.role);
 
   const student = students.find((s) => s.idCard === id);
 
@@ -192,7 +195,7 @@ export default function StudentDetail() {
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900">学生成绩详情</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {student.classNo}班 · {student.idCard}
+                  {student.classNo}班 · {isGuest ? maskIdCard(student.idCard) : student.idCard}
                 </p>
               </div>
             </div>
@@ -224,10 +227,12 @@ export default function StudentDetail() {
           <div className="bg-white rounded-xl border border-gray-100 p-5 sm:p-6">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-2xl font-medium">
-                {student.name.charAt(0)}
+                {(isGuest ? maskName(student.name, student.idCard) : student.name).charAt(0)}
               </div>
               <div className="flex-1">
-                <h3 className="text-xl font-semibold text-gray-900">{student.name}</h3>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  {isGuest ? maskName(student.name, student.idCard) : student.name}
+                </h3>
                 <p className="text-sm text-gray-500 mt-0.5">
                   {student.classNo}班 · 选科：{student.selectedSubjects.join('、')}
                 </p>
@@ -305,7 +310,7 @@ export default function StudentDetail() {
               <Award className="w-5 h-5 text-[#2dd4bf]" />
               家长信息
             </h3>
-            <ParentInfo student={student} onSave={updateStudent} showToast={showToast} />
+            <ParentInfo student={student} onSave={updateStudent} showToast={showToast} readOnly={isGuest} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:hidden">
@@ -350,21 +355,24 @@ export default function StudentDetail() {
               <textarea
                 value={commentDraft}
                 onChange={(e) => setCommentDraft(e.target.value)}
+                disabled={isGuest}
                 rows={4}
                 placeholder="填写对学生的评语，学生登录后可见…"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none disabled:bg-gray-50 disabled:text-gray-400"
               />
               <div className="flex justify-end mt-2">
-                <button
-                  onClick={() => {
-                    updateStudentComment(student.idCard, commentDraft.trim());
-                    showToast('评语已保存，学生端可见', 'success');
-                  }}
-                  className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  保存评语
-                </button>
+                {!isGuest && (
+                  <button
+                    onClick={() => {
+                      updateStudentComment(student.idCard, commentDraft.trim());
+                      showToast('评语已保存，学生端可见', 'success');
+                    }}
+                    className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    保存评语
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -529,10 +537,12 @@ function ParentInfo({
   student,
   onSave,
   showToast,
+  readOnly = false,
 }: {
   student: Student;
   onSave: (idCard: string, updates: Partial<Student>) => void;
   showToast: (msg: string, type: 'info' | 'success' | 'error') => void;
+  readOnly?: boolean;
 }) {
   const [draft, setDraft] = useState({
     fatherName: student.fatherName,
@@ -566,9 +576,10 @@ function ParentInfo({
             <label className="block text-xs text-gray-500 mb-1">{label}</label>
             <input
               type="text"
-              value={draft[key]}
+              value={readOnly ? maskField(draft[key]) : draft[key]}
               onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50"
+              disabled={readOnly}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 disabled:bg-gray-50 disabled:text-gray-400"
             />
           </div>
         ))}
@@ -576,21 +587,24 @@ function ParentInfo({
       <div className="mt-4">
         <label className="block text-xs text-gray-500 mb-1">学生备注</label>
         <textarea
-          value={draft.remark}
+          value={readOnly ? maskField(draft.remark) : draft.remark}
           onChange={(e) => setDraft((prev) => ({ ...prev, remark: e.target.value }))}
+          disabled={readOnly}
           rows={3}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none"
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2dd4bf]/50 resize-none disabled:bg-gray-50 disabled:text-gray-400"
         />
       </div>
-      <div className="flex justify-end mt-3">
-        <button
-          onClick={save}
-          className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
-        >
-          <Save className="w-4 h-4" />
-          保存
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end mt-3">
+          <button
+            onClick={save}
+            className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-[#2dd4bf] rounded-lg hover:bg-[#14b8a6] transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            保存
+          </button>
+        </div>
+      )}
     </div>
   );
 }

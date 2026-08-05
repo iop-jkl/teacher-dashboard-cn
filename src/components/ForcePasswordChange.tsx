@@ -11,6 +11,8 @@ export default function ForcePasswordChange() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  if (session?.role === 'guest') return null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');

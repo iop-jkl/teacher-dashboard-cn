@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export interface AuthSession {
-  role: 'admin' | 'teacher' | 'student';
+  role: 'admin' | 'teacher' | 'student' | 'guest';
   username: string;
   teacherName: string;
   classNo: number;
@@ -63,12 +63,21 @@ function mapUserToAccount(user: {
       mustChangePassword: am.must_change_password === true,
     };
   }
+  if (role === 'guest') {
+    return {
+      role: 'guest',
+      username: 'guest',
+      teacherName: '访客',
+      classNo: 0,
+    };
+  }
   return null;
 }
 
 export function toEmail(username: string): string {
   const name = username.trim();
   if (name === 'admin') return 'admin@school.local';
+  if (name === 'guest') return 'guest@school.local';
   if (/^\d{1,3}$/.test(name)) return `class${name}@school.local`;
   if (/^\d{17}[\dXx]$/.test(name)) return `s${name.toUpperCase()}@school.local`;
   return '';

@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { FilePlus, Users, BarChart3, BellPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/useAuth';
+import { isGuestRole } from '@/lib/privacy';
 import type { PageKey } from '@/store/useStore';
 
 const actions = [
@@ -41,6 +43,10 @@ export default function QuickActions({
   onAddScoreImport,
 }: QuickActionsProps) {
   const navigate = useNavigate();
+  const isGuest = isGuestRole(useAuthStore((s) => s.session)?.role);
+  const visibleActions = isGuest
+    ? actions.filter((a) => !('addScoreImport' in a) && !('addReminder' in a))
+    : actions;
 
   const handleClick = (action: (typeof actions)[number]) => {
     if ('addScoreImport' in action) {
@@ -64,7 +70,7 @@ export default function QuickActions({
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {actions.map((action) => (
+        {visibleActions.map((action) => (
           <button
             key={action.label}
             onClick={() => handleClick(action)}

@@ -20,7 +20,8 @@ export default function MessagesPage() {
   const session = useAuthStore((s) => s.session);
   const showToast = useToastStore((s) => s.showToast);
   const isStudent = session?.role === 'student';
-  const isTeacher = session?.role === 'teacher';
+  const isTeacher = session?.role === 'teacher' || session?.role === 'guest';
+  const isGuest = session?.role === 'guest';
 
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
@@ -80,7 +81,7 @@ export default function MessagesPage() {
   };
 
   const handleMarkRead = async (id: number) => {
-    if (!supabase) return;
+    if (!supabase || isGuest) return;
     const { error } = await supabase
       .from('anonymous_messages')
       .update({ read_at: new Date().toISOString() })
@@ -96,7 +97,7 @@ export default function MessagesPage() {
   };
 
   const handleMarkUnread = async (id: number) => {
-    if (!supabase) return;
+    if (!supabase || isGuest) return;
     const { error } = await supabase
       .from('anonymous_messages')
       .update({ read_at: null })
@@ -110,7 +111,7 @@ export default function MessagesPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!supabase) return;
+    if (!supabase || isGuest) return;
     if (!window.confirm('确认删除这封信？')) return;
     const { error } = await supabase
       .from('anonymous_messages')
@@ -148,7 +149,9 @@ export default function MessagesPage() {
                 <p className="text-xs text-gray-500 mt-0.5">
                   {isStudent
                     ? `${session?.classNo}班 · 仅班主任可见，完全匿名`
-                    : `${session?.classNo}班 · 学生来信，仅本班班主任可查看`}
+                    : isGuest
+                      ? '访客 · 只读查看，不可操作'
+                      : `${session?.classNo}班 · 学生来信，仅本班班主任可查看`}
                 </p>
               </div>
             </div>

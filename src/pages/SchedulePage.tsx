@@ -93,7 +93,7 @@ export default function SchedulePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {session?.role !== 'student' && (
+              {session?.role !== 'student' && session?.role !== 'guest' && (
                 <button
                   onClick={() => setShowAddModal(true)}
                   className="flex items-center gap-1 px-3 py-2 bg-[#2dd4bf] text-white text-sm rounded-lg hover:bg-[#14b8a6] transition-colors"
@@ -243,7 +243,7 @@ export default function SchedulePage() {
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-100">
-                {session?.role !== 'student' && (
+                {session?.role !== 'student' && session?.role !== 'guest' && (
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="w-full flex items-center justify-center gap-1 text-xs text-[#2dd4bf] hover:underline py-2"

@@ -27,13 +27,15 @@ export default function UserMenu() {
     };
   }, []);
 
-  const teacherName = session?.teacherName || '用户';
+  const teacherName = session?.role === 'guest' ? '访客' : session?.teacherName || '用户';
   const subtitle =
-    session?.role === 'admin'
-      ? '管理员 · 全部班级'
-      : session?.role === 'student'
-        ? `${session?.classNo ?? ''}班 · 学生`
-        : `${session?.classNo ?? ''}班 · 班主任`;
+    session?.role === 'guest'
+      ? '访客 · 只读演示'
+      : session?.role === 'admin'
+        ? '管理员 · 全部班级'
+        : session?.role === 'student'
+          ? `${session?.classNo ?? ''}班 · 学生`
+          : `${session?.classNo ?? ''}班 · 班主任`;
   const initial = Array.from(teacherName.trim())[0] || '师';
 
   const handleLogout = async () => {

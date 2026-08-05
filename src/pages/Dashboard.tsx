@@ -22,6 +22,7 @@ import {
   buildExamValueMap,
   totalForIndexed,
 } from '@/lib/scoreUtils';
+import { isGuestRole, maskName } from '@/lib/privacy';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -47,7 +48,8 @@ export default function Dashboard() {
     loadAllScores,
   } = useStore();
   const session = useAuthStore((s) => s.session);
-  const isAdmin = session?.role === 'admin';
+  const isAdmin = session?.role === 'admin' || session?.role === 'guest';
+  const isGuest = isGuestRole(session?.role);
   const allClassCount = useMemo(
     () => new Set(students.map((s) => s.classNo)).size,
     [students],
@@ -202,11 +204,12 @@ export default function Dashboard() {
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase();
-    return classStudents.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) || s.idCard.toLowerCase().includes(q),
+    return classStudents.filter((s) =>
+      isGuest
+        ? maskName(s.name, s.idCard).toLowerCase().includes(q)
+        : s.name.toLowerCase().includes(q) || s.idCard.toLowerCase().includes(q),
     );
-  }, [searchQuery, classStudents]);
+  }, [searchQuery, classStudents, isGuest]);
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -289,9 +292,11 @@ export default function Dashboard() {
                         className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm"
                       >
                         <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2dd4bf] flex items-center justify-center text-white text-xs font-medium">
-                          {student.name.charAt(0)}
+                          {(isGuest ? maskName(student.name, student.idCard) : student.name).charAt(0)}
                         </div>
-                        <span className="text-gray-900">{student.name}</span>
+                        <span className="text-gray-900">
+                          {isGuest ? maskName(student.name, student.idCard) : student.name}
+                        </span>
                         <span className="text-gray-400 text-xs">{student.classNo}班</span>
                       </a>
                     ))}

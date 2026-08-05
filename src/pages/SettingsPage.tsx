@@ -10,6 +10,7 @@ import { useToastStore } from '@/store/useToast';
 import { parseClassChangeFile, type ParsedClassChange } from '@/utils/classChange';
 import { parseParentFile, buildParentImport, type ParsedParentImport } from '@/utils/parentImport';
 import { generatePassword, resetPassword, changePassword } from '@/lib/password';
+import { isGuestRole, maskField } from '@/lib/privacy';
 import type { Student } from '@/types';
 
 export default function SettingsPage() {
@@ -74,7 +75,8 @@ export default function SettingsPage() {
   }, [students]);
 
   const isAdmin = session?.role === 'admin';
-  const visibleTeachers = isAdmin
+  const isGuest = isGuestRole(session?.role);
+  const visibleTeachers = isAdmin || isGuest
     ? classTeachers
     : classTeachers.filter((t) => t.classNo === session?.classNo);
 
@@ -296,6 +298,12 @@ export default function SettingsPage() {
         </header>
 
         <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-4xl">
+          {isGuest && (
+            <div className="rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm text-teal-700">
+              访客演示模式：全部数据只读且已脱敏，隐私信息（姓名、身份证、家长信息）不可见，所有修改功能已禁用。
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -307,25 +315,30 @@ export default function SettingsPage() {
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-400">账号</p>
                 <p className="text-sm font-medium text-gray-900 mt-1">
-                  {session?.username}
+                  {isGuest ? 'guest' : session?.username}
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-400">身份</p>
                 <p className="text-sm font-medium text-gray-900 mt-1">
-                  {isAdmin ? '管理员（全部班级）' : `${session?.classNo}班班主任`}
+                  {isGuest
+                    ? '访客（演示 · 只读）'
+                    : isAdmin
+                      ? '管理员（全部班级）'
+                      : `${session?.classNo}班班主任`}
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-400">姓名</p>
                 <p className="text-sm font-medium text-gray-900 mt-1">
-                  {session?.teacherName}
+                  {isGuest ? '访客' : session?.teacherName}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+          {!isGuest && (
+            <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center">
                 <Lock className="w-5 h-5 text-rose-600" />
@@ -383,6 +396,7 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+          )}
 
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-5">
@@ -397,7 +411,28 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {isAdmin ? (
+            {isGuest ? (
+              <div className="space-y-2">
+                {visibleTeachers.map((t) => (
+                  <div
+                    key={t.classNo}
+                    className="flex items-center gap-3 flex-wrap bg-gray-50 rounded-lg px-3 py-2"
+                  >
+                    <span className="w-16 text-sm font-medium text-gray-800">
+                      {t.classNo}班
+                    </span>
+                    <span className="text-sm text-gray-600">
+                      班主任：{t.teacherName ? maskField(t.teacherName) : '未设置'}
+                    </span>
+                  </div>
+                ))}
+                {visibleTeachers.length === 0 && (
+                  <div className="py-6 text-center text-sm text-gray-400">
+                    暂无班主任账号
+                  </div>
+                )}
+              </div>
+            ) : isAdmin ? (
               <div className="space-y-3">
                 <select
                   value={selectedTeacherClass ?? ''}
@@ -670,16 +705,22 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              <button
-                onClick={() => document.getElementById('parent-file')?.click()}
-                disabled={parentLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-600 hover:border-[#2dd4bf]/40 hover:bg-[#2dd4bf]/5 disabled:opacity-60 transition-colors"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                {parentLoading
-                  ? '正在解析...'
-                  : parentFileName || '选择家长信息表 .xls / .xlsx 文件'}
-              </button>
+              {isGuest ? (
+                <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-500">
+                  访客模式下无法上传或导入家长信息。
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => document.getElementById('parent-file')?.click()}
+                    disabled={parentLoading}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-600 hover:border-[#2dd4bf]/40 hover:bg-[#2dd4bf]/5 disabled:opacity-60 transition-colors"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                    {parentLoading
+                      ? '正在解析...'
+                      : parentFileName || '选择家长信息表 .xls / .xlsx 文件'}
+                  </button>
               <input
                 id="parent-file"
                 type="file"
@@ -687,6 +728,8 @@ export default function SettingsPage() {
                 onChange={(e) => handleParentFile(e.target.files?.[0])}
                 className="hidden"
               />
+                </>
+              )}
 
               {parentError && (
                 <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-600">

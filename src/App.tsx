@@ -19,6 +19,7 @@ export default function App() {
   const supabaseError = useStore((s) => s.supabaseError);
   const restoreAuth = useAuthStore((s) => s.restore);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isGuest = useAuthStore((s) => s.session?.role === 'guest');
 
   useEffect(() => {
     restoreAuth();
@@ -59,6 +60,12 @@ export default function App() {
           >
             重试
           </button>
+        </div>
+      )}
+      {isGuest && (
+        <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 px-3 py-2 rounded-full bg-[#1e3a5f]/90 text-white text-xs shadow-lg backdrop-blur">
+          <span className="w-2 h-2 rounded-full bg-[#2dd4bf] animate-pulse" />
+          访客演示模式 · 隐私数据已脱敏 · 只读访问
         </div>
       )}
       <Routes>
